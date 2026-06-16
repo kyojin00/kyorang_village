@@ -1,0 +1,63 @@
+name: kyorang_village
+description: 교랑빌리지 - 관심사 기반 커뮤니티 플랫폼
+publish_to: 'none'
+version: 1.0.0+2
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 상태 관리
+  flutter_riverpod: ^3.0.0
+
+  # 백엔드
+  supabase_flutter: ^2.8.0
+  firebase_core: ^3.8.0
+  firebase_auth: ^5.3.0
+
+  # 로컬 저장소
+  hive_ce: ^2.10.0
+  hive_ce_flutter: ^2.2.0
+  path_provider: ^2.1.4
+
+  # UI
+  google_fonts: ^6.2.1
+  cached_network_image: ^3.4.1
+  flutter_svg: ^2.0.10
+
+  # 미디어
+  image_picker: ^1.1.2
+  image_cropper: ^8.0.2
+
+  # 네트워크 / 유틸
+  dio: ^5.7.0
+  intl: ^0.19.0
+  uuid: ^4.5.1
+  crypto: ^3.0.7
+  google_sign_in: ^7.2.0
+  app_links: ^7.0.0
+  firebase_messaging: ^15.2.10
+  flutter_local_notifications: ^22.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#FDF8F1"
+  adaptive_icon_foreground: "assets/icon/app_icon_fg.png"

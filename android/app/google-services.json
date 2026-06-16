@@ -1,0 +1,122 @@
+{
+  "project_info": {
+    "project_number": "54388432481",
+    "project_id": "kyorang-talk-3f8a0",
+    "storage_bucket": "kyorang-talk-3f8a0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:54388432481:android:535639fb76c45ef8005420",
+        "android_client_info": {
+          "package_name": "com.kyorang.kyorang_talk"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "54388432481-33nndtietu4jitbr0dumeo70ep6aplet.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kyorang.kyorang_talk",
+            "certificate_hash": "97aab38e5ec8f40dad228dcbb7f13b8b7fecf0b6"
+          }
+        },
+        {
+          "client_id": "54388432481-ahmajancbq1nsk7rucv6tvj9f9pcng2c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kyorang.kyorang_talk",
+            "certificate_hash": "fe4b114e9259df9a170a80eeccc532d2f20c6dfe"
+          }
+        },
+        {
+          "client_id": "54388432481-t4vsfulsb9kof32l028vtd4b208p6gv9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kyorang.kyorang_talk",
+            "certificate_hash": "7f2bdf0f51389443fb3729bd8203daa51e1bf4c7"
+          }
+        },
+        {
+          "client_id": "54388432481-u9t7526e2d7285q69cfm0b35ncj5t6n0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kyorang.kyorang_talk",
+            "certificate_hash": "6848d0cb41d788ab07702261d9449cb5c07493fb"
+          }
+        },
+        {
+          "client_id": "54388432481-o5pgtae98r17uaeaqkqdq6uu5ebobnss.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCILXJLCBYlM507mka0JurMYL-1dWtKsAw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "54388432481-jthncu9m91ct4p0phcofqd4j5a9im73u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "54388432481-9nujknbtko75u7108l6qj588ccsq9clt.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.kyorang.kyorangTalk"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:54388432481:android:1be802f969713742005420",
+        "android_client_info": {
+          "package_name": "com.kyorang.kyorang_village"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "54388432481-m55espv26qqoj95rtqob2jg43dg4nbd9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kyorang.kyorang_village",
+            "certificate_hash": "fe4b114e9259df9a170a80eeccc532d2f20c6dfe"
+          }
+        },
+        {
+          "client_id": "54388432481-o5pgtae98r17uaeaqkqdq6uu5ebobnss.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCILXJLCBYlM507mka0JurMYL-1dWtKsAw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "54388432481-jthncu9m91ct4p0phcofqd4j5a9im73u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "54388432481-9nujknbtko75u7108l6qj588ccsq9clt.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.kyorang.kyorangTalk"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
