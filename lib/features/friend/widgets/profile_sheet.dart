@@ -6,15 +6,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/safety_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../profile/screens/interests_edit_sheet.dart';
+import '../../village/models/village.dart';
 import '../models/friend.dart';
 import '../screens/dm_chat_screen.dart';
 import '../services/dm_service.dart';
 import '../services/friend_service.dart';
 
-/// 공용 프로필 바텀시트
-/// 마을 멤버 목록, 게시글, 채팅 등 어디서든 사람을 탭하면 띄운다.
-/// 관계 상태에 따라 액션 버튼이 달라지고,
-/// 하단에 신고하기 / 차단하기가 항상 제공된다 (본인 제외).
+/// 공용 프로필 바텀시트 (v3)
 class ProfileSheet {
   ProfileSheet._();
 
@@ -26,6 +25,7 @@ class ProfileSheet {
   }) {
     return showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppTheme.bgCard,
       shape: const RoundedRectangleBorder(
         borderRadius:
@@ -58,6 +58,8 @@ class _ProfileSheetBody extends ConsumerStatefulWidget {
 
 class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
   String? _bio;
+  String? _statusMessage;
+  List<String> _interests = [];
   Friendship? _relation;
   bool _blocked = false;
   bool _loading = true;
@@ -76,9 +78,17 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
     try {
       final profileRow = await Supabase.instance.client
           .from('profiles')
-          .select('bio')
+          .select('bio, status_message, interests')
           .eq('id', widget.userId)
           .maybeSingle();
+
+      final interestsRaw = profileRow?['interests'];
+      final interestsList = <String>[];
+      if (interestsRaw is List) {
+        for (final v in interestsRaw) {
+          if (v is String) interestsList.add(v);
+        }
+      }
 
       Friendship? relation;
       bool blocked = false;
@@ -93,6 +103,8 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       if (!mounted) return;
       setState(() {
         _bio = profileRow?['bio'] as String?;
+        _statusMessage = profileRow?['status_message'] as String?;
+        _interests = interestsList;
         _relation = relation;
         _blocked = blocked;
         _loading = false;
@@ -104,10 +116,6 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
     }
   }
 
-  // ===========================================================
-  // 친구 / DM 액션
-  // ===========================================================
-
   Future<void> _sendRequest() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -115,8 +123,9 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
     try {
       final result =
           await ref.read(friendServiceProvider).sendRequest(widget.userId);
-      final relation =
-          await ref.read(friendServiceProvider).getRelationWith(widget.userId);
+      final relation = await ref
+          .read(friendServiceProvider)
+          .getRelationWith(widget.userId);
 
       if (!mounted) return;
       setState(() {
@@ -142,8 +151,9 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       ref.read(receivedRequestCountProvider.notifier).refresh();
 
       if (!mounted) return;
-      final updated =
-          await ref.read(friendServiceProvider).getRelationWith(widget.userId);
+      final updated = await ref
+          .read(friendServiceProvider)
+          .getRelationWith(widget.userId);
       if (!mounted) return;
       setState(() {
         _relation = updated;
@@ -189,7 +199,7 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       final room =
           await ref.read(dmServiceProvider).openRoomWith(widget.userId);
       if (!mounted) return;
-      Navigator.of(context).pop(); // 시트 닫기
+      Navigator.of(context).pop();
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => DmChatScreen(room: room)),
       );
@@ -201,9 +211,16 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
     }
   }
 
-  // ===========================================================
-  // 신고 / 차단
-  // ===========================================================
+  Future<void> _editInterests() async {
+    final result = await InterestsEditSheet.show(
+      context,
+      userId: _myId,
+      initial: _interests,
+    );
+    if (result == null || !mounted) return;
+    setState(() => _interests = result);
+    _snack('관심사를 저장했어요.');
+  }
 
   Future<void> _report() async {
     final reason = await showDialog<ReportReason>(
@@ -248,7 +265,6 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
     if (_busy) return;
 
     if (_blocked) {
-      // 차단 해제
       setState(() => _busy = true);
       try {
         await ref.read(safetyServiceProvider).unblock(widget.userId);
@@ -267,7 +283,6 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       return;
     }
 
-    // 차단
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -308,7 +323,6 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
     setState(() => _busy = true);
     try {
       await ref.read(safetyServiceProvider).block(widget.userId);
-      // 차단하면 친구 관계도 정리
       final relation = _relation;
       if (relation != null) {
         await ref.read(friendServiceProvider).removeFriendship(relation.id);
@@ -335,63 +349,110 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // ===========================================================
-  // UI
-  // ===========================================================
-
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              radius: 36,
-              backgroundColor: AppTheme.bgSoft,
-              backgroundImage: widget.avatarUrl != null
-                  ? CachedNetworkImageProvider(widget.avatarUrl!)
-                  : null,
-              child: widget.avatarUrl == null
-                  ? Text(
-                      widget.nickname.characters.first,
-                      style: AppTheme.body(
-                        size: 26,
-                        weight: FontWeight.w700,
-                        color: AppTheme.primary,
-                      ),
-                    )
-                  : null,
+    final mediaHeight = MediaQuery.of(context).size.height;
+    final sheetHeight = mediaHeight * 0.75;
+
+    return SizedBox(
+      height: sheetHeight,
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppTheme.divider,
+              borderRadius: BorderRadius.circular(2),
             ),
-            const SizedBox(height: 12),
-            Text(widget.nickname, style: AppTheme.display(size: 24)),
-            if (_bio != null && _bio!.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                _bio!,
-                textAlign: TextAlign.center,
-                style: AppTheme.body(
-                  size: 13,
-                  color: AppTheme.textSub,
-                  height: 1.5,
-                ),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 44,
+                    backgroundColor: AppTheme.bgSoft,
+                    backgroundImage: widget.avatarUrl != null
+                        ? CachedNetworkImageProvider(widget.avatarUrl!)
+                        : null,
+                    child: widget.avatarUrl == null
+                        ? Text(
+                            widget.nickname.characters.first,
+                            style: AppTheme.body(
+                              size: 32,
+                              weight: FontWeight.w700,
+                              color: AppTheme.primary,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(widget.nickname,
+                      style: AppTheme.display(size: 22)),
+
+                  // ---- 상태 메시지 (있을 때만 표시) ----
+                  if (_statusMessage != null &&
+                      _statusMessage!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color:
+                            AppTheme.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(
+                            AppTheme.radiusFull),
+                      ),
+                      child: Text(
+                        '"${_statusMessage!}"',
+                        style: AppTheme.body(
+                          size: 13,
+                          color: AppTheme.primaryDark,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  if (_bio != null && _bio!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      _bio!,
+                      textAlign: TextAlign.center,
+                      maxLines: 6,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.body(
+                        size: 13,
+                        color: AppTheme.textSub,
+                        height: 1.6,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  _interestsArea(),
+                  const SizedBox(height: 24),
+                  if (_loading)
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child:
+                          CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  else
+                    _actionArea(),
+                ],
               ),
-            ],
-            const SizedBox(height: 20),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(8),
-                child: CircularProgressIndicator(strokeWidth: 2.5),
-              )
-            else ...[
-              _actionArea(),
-              if (!_isMe) ...[
-                const SizedBox(height: 4),
-                Row(
+            ),
+          ),
+          if (!_isMe && !_loading)
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     TextButton(
@@ -417,33 +478,126 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
                     ),
                   ],
                 ),
-              ],
-            ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _interestsArea() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '관심사',
+              style: AppTheme.body(
+                size: 13,
+                color: AppTheme.textLight,
+                weight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            if (_isMe)
+              TextButton(
+                onPressed: _busy ? null : _editInterests,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  _interests.isEmpty ? '추가' : '편집',
+                  style: AppTheme.body(
+                    size: 12,
+                    color: AppTheme.primary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
           ],
         ),
-      ),
+        const SizedBox(height: 8),
+        if (_interests.isEmpty)
+          Text(
+            _isMe
+                ? '관심사를 추가하면 비슷한 이웃을 찾기 쉬워져요'
+                : '아직 관심사가 없어요',
+            style: AppTheme.body(
+              size: 13,
+              color: AppTheme.textLight,
+            ),
+          )
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _interests.map((code) {
+              final cat = VillageCategory.fromCode(code);
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgSoft,
+                  borderRadius:
+                      BorderRadius.circular(AppTheme.radiusFull),
+                  border:
+                      Border.all(color: AppTheme.divider, width: 1),
+                ),
+                child: Text(
+                  '${cat.emoji} ${cat.label}',
+                  style: AppTheme.body(
+                      size: 12, weight: FontWeight.w600),
+                ),
+              );
+            }).toList(),
+          ),
+      ],
     );
   }
 
   Widget _actionArea() {
     if (_isMe) {
-      return Text(
-        '나예요',
-        style: AppTheme.body(size: 13, color: AppTheme.textLight),
+      return Container(
+        width: double.infinity,
+        padding:
+            const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.bgSoft,
+          borderRadius: BorderRadius.circular(AppTheme.radiusM),
+        ),
+        child: Text(
+          '내 프로필이에요',
+          textAlign: TextAlign.center,
+          style: AppTheme.body(
+              size: 13, color: AppTheme.textLight),
+        ),
       );
     }
 
-    // 차단한 상대 → 친구/DM 액션 숨김
     if (_blocked) {
-      return Text(
-        '차단한 이웃이에요',
-        style: AppTheme.body(size: 13, color: AppTheme.textLight),
+      return Container(
+        width: double.infinity,
+        padding:
+            const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.bgSoft,
+          borderRadius: BorderRadius.circular(AppTheme.radiusM),
+        ),
+        child: Text(
+          '차단한 이웃이에요',
+          textAlign: TextAlign.center,
+          style: AppTheme.body(
+              size: 13, color: AppTheme.textLight),
+        ),
       );
     }
 
     final relation = _relation;
 
-    // 관계 없음 → 친구 신청
     if (relation == null) {
       return SizedBox(
         width: double.infinity,
@@ -454,7 +608,6 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       );
     }
 
-    // 친구 → DM / 끊기
     if (relation.isAccepted) {
       return Column(
         children: [
@@ -470,20 +623,21 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
                 _busy ? null : () => _remove(doneMessage: '친구를 끊었어요.'),
             child: Text(
               '친구 끊기',
-              style: AppTheme.body(size: 12, color: AppTheme.textLight),
+              style:
+                  AppTheme.body(size: 12, color: AppTheme.textLight),
             ),
           ),
         ],
       );
     }
 
-    // 내가 신청한 상태 → 취소
     if (relation.sentByMe(_myId)) {
       return SizedBox(
         width: double.infinity,
         child: OutlinedButton(
-          onPressed:
-              _busy ? null : () => _remove(doneMessage: '신청을 취소했어요.'),
+          onPressed: _busy
+              ? null
+              : () => _remove(doneMessage: '신청을 취소했어요.'),
           style: OutlinedButton.styleFrom(
             foregroundColor: AppTheme.textSub,
             side: const BorderSide(color: AppTheme.divider),
@@ -497,13 +651,13 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       );
     }
 
-    // 상대가 신청한 상태 → 수락 / 거절
     return Row(
       children: [
         Expanded(
           child: OutlinedButton(
-            onPressed:
-                _busy ? null : () => _remove(doneMessage: '신청을 거절했어요.'),
+            onPressed: _busy
+                ? null
+                : () => _remove(doneMessage: '신청을 거절했어요.'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.textSub,
               side: const BorderSide(color: AppTheme.divider),

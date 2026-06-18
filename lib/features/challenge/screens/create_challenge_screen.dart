@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/challenge.dart';
 import '../services/challenge_service.dart';
+import '../widgets/inline_range_calendar.dart';
 
-/// 챌린지 만들기 화면
-/// 생성 성공 시 Challenge를 pop 결과로 반환한다.
+/// 챌린지 만들기 화면 (v2 — 인라인 캘린더)
 class CreateChallengeScreen extends ConsumerStatefulWidget {
   const CreateChallengeScreen({super.key, required this.villageId});
 
@@ -36,42 +36,6 @@ class _CreateChallengeScreenState
       _titleController.text.trim().length >= 2 &&
       _period != null &&
       !_submitting;
-
-  // ===========================================================
-  // 액션
-  // ===========================================================
-
-  Future<void> _pickPeriod() async {
-    final today = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(today.year, today.month, today.day),
-      lastDate: today.add(const Duration(days: 365)),
-      initialDateRange: _period,
-      helpText: '챌린지 기간을 선택하세요',
-      saveText: '확인',
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppTheme.primary,
-              onPrimary: AppTheme.textOnPrimary,
-              surface: AppTheme.bgCard,
-              onSurface: AppTheme.textMain,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked == null || !mounted) return;
-
-    if (picked.duration.inDays + 1 > 90) {
-      _snack('챌린지는 최대 90일까지 가능해요.');
-      return;
-    }
-    setState(() => _period = picked);
-  }
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
@@ -109,19 +73,8 @@ class _CreateChallengeScreenState
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // ===========================================================
-  // UI
-  // ===========================================================
-
   @override
   Widget build(BuildContext context) {
-    final period = _period;
-    final periodText = period == null
-        ? '기간을 선택하세요'
-        : '${period.start.month}.${period.start.day} ~ '
-            '${period.end.month}.${period.end.day} '
-            '(${period.duration.inDays + 1}일)';
-
     return Scaffold(
       backgroundColor: AppTheme.bgMain,
       appBar: AppBar(title: const Text('챌린지 만들기')),
@@ -148,38 +101,19 @@ class _CreateChallengeScreenState
               ),
               const SizedBox(height: 20),
 
-              // ---- 기간 ----
+              // ---- 기간 (인라인 캘린더) ----
               _label('기간'),
-              InkWell(
-                onTap: _submitting ? null : _pickPeriod,
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 18, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgSoft,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_month_rounded,
-                          size: 20, color: AppTheme.primary),
-                      const SizedBox(width: 10),
-                      Text(
-                        periodText,
-                        style: AppTheme.body(
-                          size: 14,
-                          color: period == null
-                              ? AppTheme.textLight
-                              : AppTheme.textMain,
-                          weight: period == null
-                              ? FontWeight.w400
-                              : FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              Text(
+                '날짜를 두 번 눌러 시작일과 종료일을 선택해 주세요',
+                style: AppTheme.body(
+                    size: 12, color: AppTheme.textLight),
+              ),
+              const SizedBox(height: 8),
+              InlineRangeCalendar(
+                initialRange: _period,
+                onRangeChanged: (range) {
+                  setState(() => _period = range);
+                },
               ),
               const SizedBox(height: 20),
 
@@ -196,7 +130,6 @@ class _CreateChallengeScreenState
               ),
               const SizedBox(height: 24),
 
-              // ---- 생성 버튼 ----
               ElevatedButton(
                 onPressed: _canSubmit ? _submit : null,
                 child: _submitting

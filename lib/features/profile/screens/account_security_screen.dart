@@ -6,10 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
-import 'phone_change_screen.dart';
 
 /// 계정·보안 화면
-/// 마이 탭에서 진입. 전화번호 / Google / 이메일 연결 관리.
+/// 이메일 / Google 연결 관리 + 비밀번호 재설정
 class AccountSecurityScreen extends ConsumerStatefulWidget {
   const AccountSecurityScreen({super.key});
 
@@ -21,15 +20,10 @@ class AccountSecurityScreen extends ConsumerStatefulWidget {
 class _AccountSecurityScreenState
     extends ConsumerState<AccountSecurityScreen>
     with WidgetsBindingObserver {
-  String? _phone;
   bool _loading = true;
   bool _busy = false;
 
-  /// 화면이 직접 들고 있는 identity 리스트 (캐시 우회).
-  /// AuthService.currentIdentities는 stale일 수 있어 사용하지 않는다.
   List<UserIdentity> _identities = [];
-
-  /// Google 연결 시도 중. 콜백 결과 대기 상태.
   bool _googleLinking = false;
 
   StreamSubscription<AuthState>? _authSub;
@@ -39,15 +33,12 @@ class _AccountSecurityScreenState
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // onAuthStateChange: OAuth 콜백 후 SIGNED_IN 또는
-    // userUpdated 이벤트가 발생하면 identity 목록이 갱신된 것.
     _authSub =
         Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
       if (!mounted) return;
       if (data.event == AuthChangeEvent.signedIn ||
           data.event == AuthChangeEvent.userUpdated) {
         if (_googleLinking) {
-          // Google 연결 성공으로 간주 - identity 다시 받기
           await _refreshIdentities();
           if (!mounted) return;
           setState(() {
@@ -56,7 +47,6 @@ class _AccountSecurityScreenState
           });
           _snack('Google 계정이 연결됐어요.');
         } else {
-          // 다른 이유의 갱신 → identity 갱신 후 UI 다시 그리기
           await _refreshIdentities();
           if (!mounted) return;
           setState(() {});
@@ -69,12 +59,9 @@ class _AccountSecurityScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 사용자가 브라우저에서 앱으로 돌아왔을 때 _googleLinking이 아직 true면
-    // 연결이 실패한 것 (이미 다른 계정에 연결됐거나, 사용자가 취소).
     if (state == AppLifecycleState.resumed && _googleLinking) {
       Future.delayed(const Duration(seconds: 2), () {
         if (!mounted || !_googleLinking) return;
-        // 2초 안에 onAuthStateChange가 안 왔으면 실패로 간주
         setState(() {
           _googleLinking = false;
           _busy = false;
@@ -93,9 +80,7 @@ class _AccountSecurityScreenState
 
   Future<void> _refreshIdentities() async {
     try {
-      // 서버에서 세션과 user 정보를 강제로 새로 받아온다.
-      final res =
-          await Supabase.instance.client.auth.refreshSession();
+      final res = await Supabase.instance.client.auth.refreshSession();
       final user = res.user;
       if (user != null) {
         _identities = user.identities ?? [];
@@ -120,39 +105,14 @@ class _AccountSecurityScreenState
       setState(() => _loading = false);
       return;
     }
-
     await _refreshIdentities();
-
-    try {
-      final row = await Supabase.instance.client
-          .from('profiles')
-          .select('phone')
-          .eq('id', uid)
-          .single();
-      if (!mounted) return;
-      setState(() {
-        _phone = row['phone'] as String?;
-        _loading = false;
-      });
-    } catch (e) {
-      print('[ACCOUNT] 조회 실패: $e');
-      if (!mounted) return;
-      setState(() => _loading = false);
-    }
+    if (!mounted) return;
+    setState(() => _loading = false);
   }
 
   // ===========================================================
   // 액션
   // ===========================================================
-
-  Future<void> _openPhoneChange() async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => PhoneChangeScreen(currentPhone: _phone ?? ''),
-      ),
-    );
-    if (result == true) _load();
-  }
 
   Future<void> _linkGoogle() async {
     if (_busy) return;
@@ -162,7 +122,6 @@ class _AccountSecurityScreenState
     });
     try {
       await AuthService.instance.linkGoogle();
-      // 결과는 onAuthStateChange 또는 didChangeAppLifecycleState에서 처리
     } catch (e) {
       print('[ACCOUNT] Google 연결 실패: $e');
       if (!mounted) return;
@@ -185,7 +144,8 @@ class _AccountSecurityScreenState
         title: Text('$label 연결 해제',
             style: AppTheme.body(size: 17, weight: FontWeight.w700)),
         content: Text(
-          '$label 연결을 해제할까요?\n해제 후엔 휴대폰 인증으로만 로그인할 수 있어요.',
+          '$label 연결을 해제할까요?\n'
+          '해제 후엔 남은 로그인 방법으로만 들어올 수 있어요.',
           style:
               AppTheme.body(size: 14, color: AppTheme.textSub, height: 1.5),
         ),
@@ -219,7 +179,61 @@ class _AccountSecurityScreenState
       print('[ACCOUNT] $label 해제 실패: $e');
       if (!mounted) return;
       setState(() => _busy = false);
-      _snack('해제에 실패했어요.');
+      _snack('해제에 실패했어요. (마지막 로그인 방법은 해제할 수 없어요)');
+    }
+  }
+
+  Future<void> _sendPasswordReset() async {
+    final email = AuthService.instance.currentEmail;
+    if (email == null) {
+      _snack('이메일 정보를 찾을 수 없어요.');
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.bgCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        ),
+        title: Text('비밀번호 재설정',
+            style: AppTheme.body(size: 17, weight: FontWeight.w700)),
+        content: Text(
+          '$email 주소로 비밀번호 재설정 메일을 보낼까요?',
+          style:
+              AppTheme.body(size: 14, color: AppTheme.textSub, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('취소',
+                style: AppTheme.body(size: 14, color: AppTheme.textSub)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('보내기',
+                style: AppTheme.body(
+                    size: 14,
+                    color: AppTheme.primary,
+                    weight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      await AuthService.instance.sendPasswordReset(email);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _snack('재설정 메일을 보냈어요. 메일함을 확인해 주세요.');
+    } catch (e) {
+      print('[ACCOUNT] 비번 재설정 실패: $e');
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _snack('메일을 보내지 못했어요.');
     }
   }
 
@@ -268,10 +282,13 @@ class _AccountSecurityScreenState
 
   @override
   Widget build(BuildContext context) {
-    final googleIdentity = _identities
-        .where((i) => i.provider == 'google')
-        .cast<UserIdentity?>()
-        .firstWhere((_) => true, orElse: () => null);
+    UserIdentity? emailIdentity;
+    UserIdentity? googleIdentity;
+    for (final i in _identities) {
+      if (i.provider == 'email') emailIdentity = i;
+      if (i.provider == 'google') googleIdentity = i;
+    }
+    final email = AuthService.instance.currentEmail;
     final googleEmail = googleIdentity?.identityData?['email'] as String?;
 
     return Scaffold(
@@ -290,25 +307,29 @@ class _AccountSecurityScreenState
                   ),
                   const SizedBox(height: 8),
 
-                  // 전화번호 (마스터)
+                  // 이메일
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.phone_iphone_rounded,
+                      leading: const Icon(Icons.email_outlined,
                           color: AppTheme.primary, size: 22),
-                      title: Text('휴대폰',
+                      title: Text('이메일',
                           style: AppTheme.body(
                               size: 14, weight: FontWeight.w600)),
-                      subtitle: Text(_formatPhone(_phone ?? ''),
-                          style: AppTheme.body(
-                              size: 13, color: AppTheme.textSub)),
-                      trailing: TextButton(
-                        onPressed: _busy ? null : _openPhoneChange,
-                        child: Text('변경',
-                            style: AppTheme.body(
-                                size: 13,
-                                color: AppTheme.primary,
-                                weight: FontWeight.w700)),
+                      subtitle: Text(
+                        email ?? '연결되지 않음',
+                        style: AppTheme.body(
+                            size: 13, color: AppTheme.textSub),
                       ),
+                      trailing: (emailIdentity != null && email != null)
+                          ? TextButton(
+                              onPressed: _busy ? null : _sendPasswordReset,
+                              child: Text('비번 변경',
+                                  style: AppTheme.body(
+                                      size: 13,
+                                      color: AppTheme.primary,
+                                      weight: FontWeight.w700)),
+                            )
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -342,7 +363,7 @@ class _AccountSecurityScreenState
                                   onPressed: _busy
                                       ? null
                                       : () => _unlinkProvider(
-                                          googleIdentity, 'Google'),
+                                          googleIdentity!, 'Google'),
                                   child: Text('해제',
                                       style: AppTheme.body(
                                           size: 13,
@@ -358,10 +379,11 @@ class _AccountSecurityScreenState
                                 )),
                     ),
                   ),
+
                   const SizedBox(height: 16),
                   Text(
-                    '휴대폰은 계정의 기본 식별 수단이라 항상 유지돼요.\n'
-                    'Google 연결을 추가하면 그 계정으로도 로그인할 수 있어요.',
+                    '여러 로그인 방법을 연결해두면 한쪽을 잃어도 다른 쪽으로 들어올 수 있어요.\n'
+                    '비밀번호를 바꾸려면 "비번 변경"을 눌러 메일로 받은 링크에서 새 비밀번호를 설정해 주세요.',
                     style: AppTheme.body(
                         size: 12,
                         color: AppTheme.textLight,
@@ -371,10 +393,5 @@ class _AccountSecurityScreenState
               ),
       ),
     );
-  }
-
-  String _formatPhone(String phone) {
-    if (phone.length != 11) return phone;
-    return '${phone.substring(0, 3)}-${phone.substring(3, 7)}-${phone.substring(7)}';
   }
 }

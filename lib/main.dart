@@ -23,9 +23,12 @@ class SupabaseConfig {
 final supabase = Supabase.instance.client;
 
 /// 전역 Navigator key (알림 클릭 시 라우팅용)
-/// NotificationService에서 사용
 final GlobalKey<NavigatorState> appNavigatorKey =
     GlobalKey<NavigatorState>();
+
+/// 전역 ProviderContainer
+/// 알림 라우팅 등 위젯 트리 밖에서 Riverpod 상태를 변경할 때 사용
+late final ProviderContainer appProviderContainer;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,9 +60,12 @@ Future<void> main() async {
   await Hive.initFlutter();
   await Hive.openBox<String>('settings');
 
+  appProviderContainer = ProviderContainer();
+
   runApp(
-    const ProviderScope(
-      child: KyorangVillageApp(),
+    UncontrolledProviderScope(
+      container: appProviderContainer,
+      child: const KyorangVillageApp(),
     ),
   );
 }

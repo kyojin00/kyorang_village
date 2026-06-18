@@ -5,10 +5,10 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../board/screens/board_screen.dart';
 import '../../challenge/screens/challenge_list_screen.dart';
-import '../../friend/widgets/profile_sheet.dart';
 import '../models/village.dart';
 import '../services/village_service.dart';
 import 'village_chat_screen.dart';
+import 'village_members_sheet.dart';
 
 /// 마을 상세 화면
 /// 채팅 / 게시판 / 챌린지로 들어가는 마을의 현관이다.
@@ -37,10 +37,6 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
   bool get _isOwner =>
       _village.ownerId == AuthService.instance.currentUserId;
 
-  // ===========================================================
-  // 데이터
-  // ===========================================================
-
   Future<void> _reload() async {
     try {
       final fresh =
@@ -51,10 +47,6 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
       print('[VILLAGE_DETAIL] 갱신 실패: $e');
     }
   }
-
-  // ===========================================================
-  // 액션
-  // ===========================================================
 
   Future<void> _join() async {
     if (_busy) return;
@@ -89,15 +81,7 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
   }
 
   Future<void> _showMembers() async {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusL)),
-      ),
-      builder: (_) => _MembersSheet(villageId: _village.id),
-    );
+    VillageMembersSheet.show(context, villageId: _village.id);
   }
 
   Future<void> _leave() async {
@@ -192,10 +176,6 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // ===========================================================
-  // UI
-  // ===========================================================
-
   @override
   Widget build(BuildContext context) {
     final cat = _village.categoryInfo;
@@ -242,7 +222,6 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
-              // ---- 마을 헤더 ----
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
@@ -326,7 +305,6 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ---- 가입자: 기능 메뉴 / 미가입자: 가입 버튼 ----
               if (_village.isJoined) ...[
                 _menuTile(
                   icon: Icons.chat_bubble_rounded,
@@ -437,110 +415,6 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
                   color: AppTheme.textLight),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 멤버 목록 바텀시트
-class _MembersSheet extends ConsumerWidget {
-  const _MembersSheet({required this.villageId});
-
-  final String villageId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('마을 이웃', style: AppTheme.display(size: 22)),
-            const SizedBox(height: 12),
-            Flexible(
-              child: FutureBuilder(
-                future: VillageService.instance.fetchMembers(villageId),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-                  if (snapshot.hasError || snapshot.data == null) {
-                    return Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        '멤버를 불러오지 못했어요.',
-                        style: AppTheme.body(
-                            size: 14, color: AppTheme.textSub),
-                      ),
-                    );
-                  }
-                  final members = snapshot.data!;
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: members.length,
-                    itemBuilder: (context, i) {
-                      final m = members[i];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        onTap: () => ProfileSheet.show(
-                          context,
-                          userId: m.userId,
-                          nickname: m.nickname,
-                          avatarUrl: m.avatarUrl,
-                        ),
-                        leading: CircleAvatar(
-                          backgroundColor: AppTheme.bgSoft,
-                          backgroundImage: m.avatarUrl != null
-                              ? NetworkImage(m.avatarUrl!)
-                              : null,
-                          child: m.avatarUrl == null
-                              ? Text(
-                                  m.nickname.characters.first,
-                                  style: AppTheme.body(
-                                    size: 14,
-                                    weight: FontWeight.w700,
-                                    color: AppTheme.primary,
-                                  ),
-                                )
-                              : null,
-                        ),
-                        title: Text(
-                          m.nickname,
-                          style: AppTheme.body(
-                              size: 14, weight: FontWeight.w600),
-                        ),
-                        trailing: m.isOwner
-                            ? Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.bgSoft,
-                                  borderRadius: BorderRadius.circular(
-                                      AppTheme.radiusFull),
-                                ),
-                                child: Text(
-                                  '촌장',
-                                  style: AppTheme.body(
-                                    size: 11,
-                                    color: AppTheme.primaryDark,
-                                    weight: FontWeight.w700,
-                                  ),
-                                ),
-                              )
-                            : null,
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
         ),
       ),
     );

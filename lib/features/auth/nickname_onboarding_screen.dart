@@ -6,9 +6,9 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../home/home_shell.dart';
+import '../onboarding/onboarding_screen.dart';
 
 /// 신규 가입자 닉네임 온보딩 화면
-/// 휴대폰 인증으로 새 계정이 만들어진 직후 1회만 표시.
 class NicknameOnboardingScreen extends ConsumerStatefulWidget {
   const NicknameOnboardingScreen({super.key});
 
@@ -49,7 +49,6 @@ class _NicknameOnboardingScreenState
             : _bioController.text.trim(),
       }).eq('id', uid);
 
-      // 알림 권한 요청 + FCM 토큰 저장 (실패해도 가입은 진행)
       try {
         await NotificationService.instance.requestPermission();
         await NotificationService.instance.saveToken();
@@ -58,8 +57,14 @@ class _NicknameOnboardingScreenState
       }
 
       if (!mounted) return;
+
+      // 앱 소개 본 적 없으면 OnboardingScreen 거치고, 봤으면 바로 HomeShell
+      final hasSeen = OnboardingScreen.hasSeenOnboarding();
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeShell()),
+        MaterialPageRoute(
+          builder: (_) =>
+              hasSeen ? const HomeShell() : const OnboardingScreen(),
+        ),
         (route) => false,
       );
     } catch (e) {
@@ -109,7 +114,6 @@ class _NicknameOnboardingScreenState
                     AppTheme.body(size: 14, color: AppTheme.textSub),
               ),
               const SizedBox(height: 32),
-
               Text('닉네임',
                   style: AppTheme.body(
                       size: 12, color: AppTheme.textLight)),
@@ -125,7 +129,6 @@ class _NicknameOnboardingScreenState
                 ),
                 onChanged: (_) => setState(() {}),
               ),
-
               const SizedBox(height: 20),
               Text('한 줄 소개 (선택)',
                   style: AppTheme.body(
@@ -141,7 +144,6 @@ class _NicknameOnboardingScreenState
                   counterText: '',
                 ),
               ),
-
               const SizedBox(height: 28),
               ElevatedButton(
                 onPressed: (_canSave && !_saving) ? _save : null,
@@ -156,7 +158,6 @@ class _NicknameOnboardingScreenState
                       )
                     : const Text('시작하기'),
               ),
-
               const SizedBox(height: 16),
               Text(
                 '나중에 마이 탭에서 언제든 바꿀 수 있어요.',

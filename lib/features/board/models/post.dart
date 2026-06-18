@@ -1,3 +1,27 @@
+/// 이모지 반응 종류 (DB의 post_likes.reaction 컬럼과 1:1)
+enum PostReaction {
+  heart('heart', '❤️', '좋아요'),
+  thumbsUp('thumbs_up', '👍', '응원'),
+  laugh('laugh', '😂', '웃김'),
+  sad('sad', '😢', '슬픔'),
+  wow('wow', '😮', '놀람'),
+  pray('pray', '🙏', '감사');
+
+  const PostReaction(this.code, this.emoji, this.label);
+
+  final String code;
+  final String emoji;
+  final String label;
+
+  static PostReaction? fromCode(String? code) {
+    if (code == null) return null;
+    for (final r in PostReaction.values) {
+      if (r.code == code) return r;
+    }
+    return null;
+  }
+}
+
 /// 게시글 모델 (posts + profiles 조인)
 class Post {
   const Post({
@@ -12,6 +36,8 @@ class Post {
     required this.createdAt,
     this.authorAvatarUrl,
     this.isLiked = false,
+    this.myReaction,
+    this.reactions = const {},
   });
 
   final String id;
@@ -25,10 +51,23 @@ class Post {
   final int commentCount;
   final DateTime createdAt;
 
-  /// 내가 좋아요 눌렀는지 (조회 시점에 계산되는 클라이언트 필드)
+  /// 본인이 누른 반응 (null이면 안 누름)
+  final PostReaction? myReaction;
+
+  /// 게시글별 반응 카운트 (reaction code -> count)
+  /// 예: {'heart': 3, 'thumbs_up': 2}
+  final Map<String, int> reactions;
+
+  /// 호환성용 (이전 코드들이 isLiked로 토글 표시함)
+  /// 어떤 반응이라도 눌렀으면 true
   final bool isLiked;
 
-  factory Post.fromJson(Map<String, dynamic> json, {bool isLiked = false}) {
+  factory Post.fromJson(
+    Map<String, dynamic> json, {
+    bool isLiked = false,
+    PostReaction? myReaction,
+    Map<String, int> reactions = const {},
+  }) {
     final profile = json['profiles'] as Map<String, dynamic>?;
     return Post(
       id: json['id'] as String,
@@ -44,7 +83,9 @@ class Post {
       likeCount: (json['like_count'] as num?)?.toInt() ?? 0,
       commentCount: (json['comment_count'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
-      isLiked: isLiked,
+      isLiked: isLiked || myReaction != null,
+      myReaction: myReaction,
+      reactions: reactions,
     );
   }
 
@@ -52,6 +93,9 @@ class Post {
     int? likeCount,
     int? commentCount,
     bool? isLiked,
+    PostReaction? myReaction,
+    bool clearMyReaction = false,
+    Map<String, int>? reactions,
   }) {
     return Post(
       id: id,
@@ -65,6 +109,8 @@ class Post {
       commentCount: commentCount ?? this.commentCount,
       createdAt: createdAt,
       isLiked: isLiked ?? this.isLiked,
+      myReaction: clearMyReaction ? null : (myReaction ?? this.myReaction),
+      reactions: reactions ?? this.reactions,
     );
   }
 

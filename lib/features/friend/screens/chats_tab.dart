@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/unread_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/friend.dart';
 import '../services/dm_service.dart';
@@ -35,6 +36,8 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
         _rooms = rooms;
         _loading = false;
       });
+      // 탭 진입 시 unread도 갱신
+      ref.read(unreadCountsProvider.notifier).refresh();
     } catch (e) {
       print('[CHATS_TAB] 목록 조회 실패: $e');
       if (!mounted) return;
@@ -46,7 +49,7 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => DmChatScreen(room: room)),
     );
-    _fetch(); // 마지막 메시지 갱신
+    _fetch(); // 마지막 메시지 + unread 갱신
   }
 
   Future<void> _openFriends() async {
@@ -61,6 +64,7 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
   Widget build(BuildContext context) {
     final requestCount =
         ref.watch(receivedRequestCountProvider).value ?? 0;
+    final unread = ref.watch(unreadCountsProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.bgMain,
@@ -125,8 +129,13 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
                             padding:
                                 const EdgeInsets.fromLTRB(20, 4, 20, 24),
                             itemCount: _rooms.length,
-                            itemBuilder: (context, i) =>
-                                _roomRow(_rooms[i]),
+                            itemBuilder: (context, i) {
+                              final room = _rooms[i];
+                              return _roomRow(
+                                room,
+                                unreadCount: unread.dmFor(room.id),
+                              );
+                            },
                           ),
                         ),
             ),
@@ -136,7 +145,9 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
     );
   }
 
-  Widget _roomRow(DmRoom room) {
+  Widget _roomRow(DmRoom room, {required int unreadCount}) {
+    final hasUnread = unreadCount > 0;
+
     return InkWell(
       borderRadius: BorderRadius.circular(AppTheme.radiusM),
       onTap: () => _openRoom(room),
@@ -168,16 +179,24 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
                 children: [
                   Text(
                     room.otherNickname,
-                    style:
-                        AppTheme.body(size: 15, weight: FontWeight.w700),
+                    style: AppTheme.body(
+                      size: 15,
+                      weight: FontWeight.w700,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     room.lastMessage ?? '대화를 시작해 보세요',
-                    style:
-                        AppTheme.body(size: 13, color: AppTheme.textSub),
+                    style: AppTheme.body(
+                      size: 13,
+                      color: hasUnread
+                          ? AppTheme.textMain
+                          : AppTheme.textSub,
+                      weight:
+                          hasUnread ? FontWeight.w600 : FontWeight.w400,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -185,11 +204,50 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              room.lastMessageTimeLabel,
-              style: AppTheme.body(size: 11, color: AppTheme.textLight),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  room.lastMessageTimeLabel,
+                  style: AppTheme.body(
+                    size: 11,
+                    color: hasUnread
+                        ? AppTheme.primary
+                        : AppTheme.textLight,
+                    weight:
+                        hasUnread ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+                if (hasUnread) ...[
+                  const SizedBox(height: 4),
+                  _unreadBadge(unreadCount),
+                ],
+              ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _unreadBadge(int count) {
+    final label = count > 99 ? '99+' : '$count';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+      decoration: BoxDecoration(
+        color: AppTheme.error,
+        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          height: 1.2,
         ),
       ),
     );

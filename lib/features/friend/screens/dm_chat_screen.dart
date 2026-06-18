@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,8 +8,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/safety_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/unread_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/fullscreen_image_viewer.dart';
+import '../../../core/widgets/report_dialog.dart';
 import '../models/friend.dart';
 import '../services/dm_service.dart';
 
@@ -83,6 +86,9 @@ class _DmChatScreenState extends ConsumerState<DmChatScreen> {
         _hasMore = recent.length >= 50;
         _loading = false;
       });
+
+      // 방 진입 → 읽음 처리
+      ref.read(unreadCountsProvider.notifier).markDmRead(widget.room.id);
     } catch (e) {
       print('[DM_CHAT] 초기 로드 실패: $e');
       if (!mounted) return;
@@ -124,6 +130,12 @@ class _DmChatScreenState extends ConsumerState<DmChatScreen> {
     if (!mounted) return;
     if (!_messageIds.add(message.id)) return;
     setState(() => _messages.add(message));
+
+    // 본인이 받은 메시지면 즉시 읽음 처리
+    // (방 열린 상태에서 도착한 메시지)
+    if (message.senderId != _myId) {
+      ref.read(unreadCountsProvider.notifier).markDmRead(widget.room.id);
+    }
   }
 
   // ===========================================================
@@ -188,6 +200,57 @@ class _DmChatScreenState extends ConsumerState<DmChatScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// 메시지 길게 누르기 메뉴 (복사 / 신고)
+  void _showMessageActions(DmMessage message) {
+    final hasText = message.content != null && message.content!.isNotEmpty;
+    final isMine = message.senderId == _myId;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusL)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasText)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded,
+                    color: AppTheme.textMain),
+                title: Text('복사하기', style: AppTheme.body(size: 14)),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  Clipboard.setData(
+                      ClipboardData(text: message.content!));
+                  _snack('복사했어요.');
+                },
+              ),
+            if (!isMine)
+              ListTile(
+                leading:
+                    const Icon(Icons.flag_outlined, color: AppTheme.error),
+                title: Text('메시지 신고',
+                    style:
+                        AppTheme.body(size: 14, color: AppTheme.error)),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  showReportDialog(
+                    context,
+                    targetType: ReportTargetType.message,
+                    targetId: message.id,
+                    targetLabel: '메시지',
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ===========================================================
@@ -268,23 +331,32 @@ class _DmChatScreenState extends ConsumerState<DmChatScreen> {
 
     // 이미지만 있는 경우 — 버블 배경 없이 이미지만
     if (hasImage && !hasText) {
-      return _imageOnlyBubble(message.imageUrl!);
+      return GestureDetector(
+        onLongPress: () => _showMessageActions(message),
+        child: _imageOnlyBubble(message.imageUrl!),
+      );
     }
 
     // 텍스트만 있는 경우 — 기존 버블
     if (hasText && !hasImage) {
-      return _textBubble(message.content!, isMine);
+      return GestureDetector(
+        onLongPress: () => _showMessageActions(message),
+        child: _textBubble(message.content!, isMine),
+      );
     }
 
     // 이미지 + 텍스트 — 이미지 위 텍스트 아래
-    return Column(
-      crossAxisAlignment:
-          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        _imageOnlyBubble(message.imageUrl!),
-        const SizedBox(height: 4),
-        _textBubble(message.content!, isMine),
-      ],
+    return GestureDetector(
+      onLongPress: () => _showMessageActions(message),
+      child: Column(
+        crossAxisAlignment:
+            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          _imageOnlyBubble(message.imageUrl!),
+          const SizedBox(height: 4),
+          _textBubble(message.content!, isMine),
+        ],
+      ),
     );
   }
 

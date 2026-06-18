@@ -27,8 +27,8 @@ class _BoardScreenState extends ConsumerState<BoardScreen> {
   bool _loadingMore = false;
   bool _hasMore = true;
 
-  /// 좋아요 토글 진행 중인 글 id (연타 방지)
-  final Set<String> _togglingLikes = {};
+  /// 반응 변경 진행 중인 글 id (연타 방지)
+  final Set<String> _settingReactions = {};
 
   @override
   void initState() {
@@ -128,33 +128,135 @@ class _BoardScreenState extends ConsumerState<BoardScreen> {
     });
   }
 
-  Future<void> _toggleLike(int index) async {
+  /// 반응 변경 - 카드에서 빠르게 처리
+  Future<void> _setReaction(int index, PostReaction? newReaction) async {
     final post = _posts[index];
-    if (_togglingLikes.contains(post.id)) return;
-    _togglingLikes.add(post.id);
+    if (_settingReactions.contains(post.id)) return;
+    _settingReactions.add(post.id);
 
-    final wasLiked = post.isLiked;
+    final old = post.myReaction;
+    final target = (old == newReaction) ? null : newReaction;
+
+    // 낙관적 업데이트
+    final newReactions = Map<String, int>.from(post.reactions);
+    if (old != null) {
+      final c = (newReactions[old.code] ?? 1) - 1;
+      if (c <= 0) {
+        newReactions.remove(old.code);
+      } else {
+        newReactions[old.code] = c;
+      }
+    }
+    if (target != null) {
+      newReactions[target.code] = (newReactions[target.code] ?? 0) + 1;
+    }
+    final wasLikedAny = old != null;
+    final nowLikedAny = target != null;
+    final likeCountDelta = (nowLikedAny ? 1 : 0) - (wasLikedAny ? 1 : 0);
+
     setState(() {
       _posts[index] = post.copyWith(
-        isLiked: !wasLiked,
-        likeCount: post.likeCount + (wasLiked ? -1 : 1),
+        myReaction: target,
+        clearMyReaction: target == null,
+        reactions: newReactions,
+        likeCount: post.likeCount + likeCountDelta,
+        isLiked: nowLikedAny,
       );
     });
 
     try {
-      await ref.read(boardServiceProvider).toggleLike(
+      await ref.read(boardServiceProvider).setReaction(
             postId: post.id,
-            currentlyLiked: wasLiked,
+            reaction: target,
           );
     } catch (e) {
-      print('[BOARD] 좋아요 실패: $e');
+      print('[BOARD] 반응 변경 실패: $e');
       if (!mounted) return;
-      setState(() {
-        _posts[index] = post; // 롤백
-      });
+      // 롤백
+      setState(() => _posts[index] = post);
     } finally {
-      _togglingLikes.remove(post.id);
+      _settingReactions.remove(post.id);
     }
+  }
+
+  /// 반응 픽커 시트
+  void _showReactionPicker(int index) {
+    final post = _posts[index];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusL)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '반응 선택',
+                style: AppTheme.body(size: 14, color: AppTheme.textLight),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: PostReaction.values.map((r) {
+                  final selected = post.myReaction == r;
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.of(sheetCtx).pop();
+                      _setReaction(index, r);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppTheme.primary.withOpacity(0.12)
+                            : AppTheme.bgSoft,
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusM),
+                        border: Border.all(
+                          color: selected
+                              ? AppTheme.primary
+                              : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(r.emoji,
+                              style: const TextStyle(fontSize: 28)),
+                          const SizedBox(height: 4),
+                          Text(
+                            r.label,
+                            style: AppTheme.body(
+                              size: 11,
+                              color: selected
+                                  ? AppTheme.primary
+                                  : AppTheme.textSub,
+                              weight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _snack(String message) {
@@ -307,38 +409,16 @@ class _BoardScreenState extends ConsumerState<BoardScreen> {
               ],
               const SizedBox(height: 12),
 
-              // ---- 좋아요/댓글 ----
+              // ---- 반응 칩 합계 (있을 때만) ----
+              if (post.reactions.isNotEmpty) ...[
+                _reactionsSummary(post),
+                const SizedBox(height: 8),
+              ],
+
+              // ---- 반응 버튼 + 댓글 ----
               Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => _toggleLike(index),
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Row(
-                        children: [
-                          Icon(
-                            post.isLiked
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_outline_rounded,
-                            size: 18,
-                            color: post.isLiked
-                                ? AppTheme.error
-                                : AppTheme.textLight,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${post.likeCount}',
-                            style: AppTheme.body(
-                              size: 12,
-                              color: AppTheme.textSub,
-                              weight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _reactionButton(index, post),
                   const SizedBox(width: 14),
                   const Icon(Icons.chat_bubble_outline_rounded,
                       size: 16, color: AppTheme.textLight),
@@ -355,6 +435,91 @@ class _BoardScreenState extends ConsumerState<BoardScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 반응 합계 - 작은 이모지 줄로 표시 (예: ❤️ 👍 😂 5)
+  Widget _reactionsSummary(Post post) {
+    final entries = post.reactions.entries
+        .where((e) => e.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    final topEmojis = entries.take(3).map((e) {
+      final r = PostReaction.fromCode(e.key);
+      return r?.emoji ?? '';
+    }).join('');
+
+    final total = entries.fold<int>(0, (sum, e) => sum + e.value);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.bgSoft,
+        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(topEmojis, style: const TextStyle(fontSize: 13)),
+          const SizedBox(width: 4),
+          Text(
+            '$total',
+            style: AppTheme.body(
+              size: 11,
+              color: AppTheme.textSub,
+              weight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 반응 버튼 - 본인 반응 있으면 그 이모지, 없으면 "반응" 아이콘
+  Widget _reactionButton(int index, Post post) {
+    return GestureDetector(
+      onTap: () => _showReactionPicker(index),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            if (post.myReaction != null) ...[
+              Text(
+                post.myReaction!.emoji,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                post.myReaction!.label,
+                style: AppTheme.body(
+                  size: 12,
+                  color: AppTheme.primary,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            ] else ...[
+              const Icon(
+                Icons.add_reaction_outlined,
+                size: 18,
+                color: AppTheme.textLight,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '반응',
+                style: AppTheme.body(
+                  size: 12,
+                  color: AppTheme.textSub,
+                  weight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

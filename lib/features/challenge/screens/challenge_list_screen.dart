@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../village/models/village.dart';
 import '../models/challenge.dart';
 import '../services/challenge_service.dart';
+import '../widgets/challenge_list_card.dart';
 import 'challenge_detail_screen.dart';
 import 'create_challenge_screen.dart';
 
@@ -68,7 +69,6 @@ class _ChallengeListScreenState
         builder: (_) => ChallengeDetailScreen(challenge: challenge),
       ),
     );
-    // 상세에서 참가/인증/삭제했을 수 있으니 갱신
     _fetch();
   }
 
@@ -96,106 +96,13 @@ class _ChallengeListScreenState
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
                       itemCount: _challenges.length,
                       separatorBuilder: (_, __) =>
-                          const SizedBox(height: 12),
-                      itemBuilder: (context, i) =>
-                          _challengeCard(_challenges[i]),
-                    ),
-                  ),
-      ),
-    );
-  }
-
-  Widget _challengeCard(Challenge challenge) {
-    final status = challenge.status;
-    final statusColor = switch (status) {
-      ChallengeStatus.active => AppTheme.secondary,
-      ChallengeStatus.upcoming => AppTheme.accent,
-      ChallengeStatus.ended => AppTheme.textLight,
-    };
-
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.radiusL),
-        onTap: () => _openDetail(challenge),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.15),
-                      borderRadius:
-                          BorderRadius.circular(AppTheme.radiusFull),
-                    ),
-                    child: Text(
-                      status.label,
-                      style: AppTheme.body(
-                        size: 11,
-                        color: statusColor,
-                        weight: FontWeight.w700,
+                          const SizedBox(height: 14),
+                      itemBuilder: (context, i) => ChallengeListCard(
+                        challenge: _challenges[i],
+                        onTap: () => _openDetail(_challenges[i]),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    challenge.periodLabel,
-                    style:
-                        AppTheme.body(size: 12, color: AppTheme.textSub),
-                  ),
-                  const Spacer(),
-                  if (challenge.hasCheckedInToday)
-                    const Icon(Icons.check_circle_rounded,
-                        size: 18, color: AppTheme.secondaryDark),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                challenge.title,
-                style: AppTheme.body(size: 16, weight: FontWeight.w700),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${challenge.participantCount}명 도전 중',
-                style: AppTheme.body(size: 12, color: AppTheme.textSub),
-              ),
-              if (challenge.isParticipating) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius:
-                            BorderRadius.circular(AppTheme.radiusFull),
-                        child: LinearProgressIndicator(
-                          value: challenge.myProgress,
-                          minHeight: 6,
-                          backgroundColor: AppTheme.bgSoft,
-                          color: AppTheme.primary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${challenge.myCheckinCount}/${challenge.totalDays}일',
-                      style: AppTheme.body(
-                        size: 11,
-                        color: AppTheme.primaryDark,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -31,18 +31,44 @@ class VillageService {
   }
 
   /// 탐색 목록 (카테고리/검색어 필터, 멤버 많은 순)
-  /// 각 마을에 isJoined를 채워서 반환한다.
+  ///
+  /// 검색 로직 v1.1:
+  /// - 검색어가 카테고리 라벨(예: "운동")과 일치하면 해당 카테고리 코드도 매칭
+  /// - 이름 + 설명에 ILIKE로 부분 일치
+  /// - 검색 시엔 정확 매치 > 부분 매치 > 인기순으로 정렬
   Future<List<Village>> fetchExploreVillages({
     String? category,
     String? search,
   }) async {
+    final trimmedSearch = search?.trim();
+    final hasSearch = trimmedSearch != null && trimmedSearch.isNotEmpty;
+
     var query = _supabase.from('villages').select();
 
     if (category != null && category.isNotEmpty) {
       query = query.eq('category', category);
     }
-    if (search != null && search.trim().isNotEmpty) {
-      query = query.ilike('name', '%${search.trim()}%');
+
+    if (hasSearch) {
+      final escaped = _escapeForIlike(trimmedSearch);
+
+      // 검색어가 카테고리 라벨과 일치하는지 확인
+      final matchedCategoryCodes = VillageCategory.all
+          .where((c) => c.label.contains(trimmedSearch) ||
+              trimmedSearch.contains(c.label))
+          .map((c) => c.code)
+          .toList();
+
+      // OR 조건 조립
+      final orClauses = <String>[
+        'name.ilike.%$escaped%',
+        'description.ilike.%$escaped%',
+      ];
+      for (final code in matchedCategoryCodes) {
+        orClauses.add('category.eq.$code');
+      }
+
+      query = query.or(orClauses.join(','));
     }
 
     final rows = await query
@@ -52,9 +78,37 @@ class VillageService {
 
     final myIds = await fetchMyVillageIds();
 
-    return rows
+    var villages = rows
         .map((r) => Village.fromJson(r, isJoined: myIds.contains(r['id'])))
         .toList();
+
+    // 검색 시 클라이언트 측 재정렬:
+    // 1. 이름 정확 매치
+    // 2. 이름 시작 매치
+    // 3. 그 외 (서버 정렬 유지)
+    if (hasSearch) {
+      final q = trimmedSearch.toLowerCase();
+      int rank(Village v) {
+        final name = v.name.toLowerCase();
+        if (name == q) return 0;
+        if (name.startsWith(q)) return 1;
+        if (name.contains(q)) return 2;
+        return 3;
+      }
+      villages.sort((a, b) {
+        final r = rank(a).compareTo(rank(b));
+        if (r != 0) return r;
+        return b.memberCount.compareTo(a.memberCount);
+      });
+    }
+
+    return villages;
+  }
+
+  /// PostgREST or 필터에서 안전하게 쓰이도록 특수문자 이스케이프
+  /// (`,` `(` `)`가 들어 있으면 필터 파싱이 깨질 수 있다)
+  String _escapeForIlike(String s) {
+    return s.replaceAll(',', '\\,').replaceAll('(', '\\(').replaceAll(')', '\\)');
   }
 
   /// 내가 가입한 마을 목록 (최근 가입 순)
@@ -110,7 +164,6 @@ class VillageService {
   // 생성 / 가입 / 탈퇴
   // ===========================================================
 
-  /// 마을 생성. 오너 멤버 등록은 DB 트리거(auto_join_owner)가 처리한다.
   Future<Village> createVillage({
     required String name,
     required String category,
@@ -133,7 +186,6 @@ class VillageService {
     return Village.fromJson(row, isJoined: true);
   }
 
-  /// 마을 가입
   Future<void> joinVillage(String villageId) async {
     await _supabase.from('village_members').insert({
       'village_id': villageId,
@@ -142,7 +194,6 @@ class VillageService {
     print('[VILLAGE] 가입: $villageId');
   }
 
-  /// 마을 탈퇴 (오너는 탈퇴 불가 - 호출 전에 UI에서 막는다)
   Future<void> leaveVillage(String villageId) async {
     await _supabase
         .from('village_members')
@@ -152,19 +203,16 @@ class VillageService {
     print('[VILLAGE] 탈퇴: $villageId');
   }
 
-  /// 마을 삭제 (오너 전용)
   Future<void> deleteVillage(String villageId) async {
     await _supabase.from('villages').delete().eq('id', villageId);
     print('[VILLAGE] 삭제: $villageId');
   }
 }
 
-/// 서비스 프로바이더
 final villageServiceProvider = Provider<VillageService>((ref) {
   return VillageService.instance;
 });
 
-/// 내 마을 목록 (내 마을 탭에서 watch, 가입/탈퇴/생성 후 invalidate)
 class MyVillagesNotifier extends AsyncNotifier<List<Village>> {
   @override
   Future<List<Village>> build() {

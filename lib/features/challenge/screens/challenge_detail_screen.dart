@@ -10,8 +10,9 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/challenge.dart';
 import '../services/challenge_service.dart';
+import '../widgets/challenge_progress_grid.dart';
 
-/// 챌린지 상세 화면 (진행률 + 인증 피드)
+/// 챌린지 상세 화면 (진행 그리드 + 인증 피드)
 class ChallengeDetailScreen extends ConsumerStatefulWidget {
   const ChallengeDetailScreen({super.key, required this.challenge});
 
@@ -32,16 +33,24 @@ class _ChallengeDetailScreenState
   String get _myId => AuthService.instance.currentUserId ?? '';
   bool get _isCreator => _challenge.creatorId == _myId;
 
+  /// 본인이 인증한 날짜 집합 (그리드용)
+  Set<DateTime> get _myCheckedDates {
+    return _checkins
+        .where((c) => c.userId == _myId)
+        .map((c) => DateTime(
+              c.checkinDate.year,
+              c.checkinDate.month,
+              c.checkinDate.day,
+            ))
+        .toSet();
+  }
+
   @override
   void initState() {
     super.initState();
     _challenge = widget.challenge;
     _reload();
   }
-
-  // ===========================================================
-  // 데이터
-  // ===========================================================
 
   Future<void> _reload() async {
     try {
@@ -62,10 +71,6 @@ class _ChallengeDetailScreenState
       setState(() => _loadingCheckins = false);
     }
   }
-
-  // ===========================================================
-  // 액션
-  // ===========================================================
 
   Future<void> _join() async {
     if (_busy) return;
@@ -125,7 +130,6 @@ class _ChallengeDetailScreenState
 
       if (!mounted) return;
       if (checkin == null) {
-        // 오늘 이미 인증함 (다른 기기에서 했거나 상태 불일치)
         setState(() {
           _busy = false;
           _challenge = _challenge.copyWith(hasCheckedInToday: true);
@@ -276,10 +280,6 @@ class _ChallengeDetailScreenState
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // ===========================================================
-  // UI
-  // ===========================================================
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -427,39 +427,14 @@ class _ChallengeDetailScreenState
               ],
             ),
 
-            // ---- 내 진행률 ----
+            // ---- 진행 그리드 (참가자만 표시) ----
             if (_challenge.isParticipating) ...[
+              const SizedBox(height: 18),
+              const Divider(),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '내 달성률',
-                    style: AppTheme.body(
-                      size: 12,
-                      color: AppTheme.textSub,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    '${_challenge.myCheckinCount}/${_challenge.totalDays}일',
-                    style: AppTheme.body(
-                      size: 12,
-                      color: AppTheme.primaryDark,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-                child: LinearProgressIndicator(
-                  value: _challenge.myProgress,
-                  minHeight: 8,
-                  backgroundColor: AppTheme.bgSoft,
-                  color: AppTheme.primary,
-                ),
+              ChallengeProgressGrid(
+                challenge: _challenge,
+                myCheckedDates: _myCheckedDates,
               ),
             ],
           ],
@@ -700,8 +675,6 @@ class _CheckinSheetState extends State<_CheckinSheet> {
             children: [
               Text('오늘의 인증', style: AppTheme.display(size: 22)),
               const SizedBox(height: 14),
-
-              // ---- 사진 ----
               if (_image != null)
                 Stack(
                   children: [
@@ -779,8 +752,6 @@ class _CheckinSheetState extends State<_CheckinSheet> {
                   ],
                 ),
               const SizedBox(height: 12),
-
-              // ---- 한마디 ----
               TextField(
                 controller: _textController,
                 maxLines: 2,
@@ -793,7 +764,6 @@ class _CheckinSheetState extends State<_CheckinSheet> {
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
-
               ElevatedButton(
                 onPressed: _canSubmit
                     ? () => Navigator.of(context).pop(

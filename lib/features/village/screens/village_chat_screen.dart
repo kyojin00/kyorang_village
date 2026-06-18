@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/safety_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/unread_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/fullscreen_image_viewer.dart';
 import '../../../core/widgets/report_dialog.dart';
@@ -97,6 +99,11 @@ class _VillageChatScreenState extends ConsumerState<VillageChatScreen> {
         _hasMore = recent.length >= 50;
         _loading = false;
       });
+
+      // 마을 채팅 진입 → 읽음 처리
+      ref
+          .read(unreadCountsProvider.notifier)
+          .markVillageRead(widget.village.id);
     } catch (e) {
       print('[VILLAGE_CHAT] 초기 로드 실패: $e');
       if (!mounted) return;
@@ -142,9 +149,19 @@ class _VillageChatScreenState extends ConsumerState<VillageChatScreen> {
     if (_blockedIds.contains(message.senderId)) return;
     if (!_messageIds.add(message.id)) return;
     setState(() => _messages.add(message));
+
+    // 마을 채팅 화면 열린 상태에서 받은 메시지는 즉시 읽음 처리
+    if (message.senderId != _myId) {
+      ref
+          .read(unreadCountsProvider.notifier)
+          .markVillageRead(widget.village.id);
+    }
   }
 
-  void _showMessageReport(VillageMessage message) {
+  void _showMessageActions(VillageMessage message) {
+    final hasText = message.content != null && message.content!.isNotEmpty;
+    final isMine = message.senderId == _myId;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.bgCard,
@@ -156,34 +173,50 @@ class _VillageChatScreenState extends ConsumerState<VillageChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.person_outline_rounded,
-                  color: AppTheme.textMain),
-              title: Text('프로필 보기', style: AppTheme.body(size: 14)),
-              onTap: () {
-                Navigator.of(sheetCtx).pop();
-                ProfileSheet.show(
-                  context,
-                  userId: message.senderId,
-                  nickname: message.senderNickname,
-                  avatarUrl: message.senderAvatarUrl,
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined, color: AppTheme.error),
-              title: Text('메시지 신고',
-                  style: AppTheme.body(size: 14, color: AppTheme.error)),
-              onTap: () {
-                Navigator.of(sheetCtx).pop();
-                showReportDialog(
-                  context,
-                  targetType: ReportTargetType.message,
-                  targetId: message.id,
-                  targetLabel: '메시지',
-                );
-              },
-            ),
+            if (hasText)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded,
+                    color: AppTheme.textMain),
+                title: Text('복사하기', style: AppTheme.body(size: 14)),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  Clipboard.setData(
+                      ClipboardData(text: message.content!));
+                  _snack('복사했어요.');
+                },
+              ),
+            if (!isMine) ...[
+              ListTile(
+                leading: const Icon(Icons.person_outline_rounded,
+                    color: AppTheme.textMain),
+                title: Text('프로필 보기', style: AppTheme.body(size: 14)),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  ProfileSheet.show(
+                    context,
+                    userId: message.senderId,
+                    nickname: message.senderNickname,
+                    avatarUrl: message.senderAvatarUrl,
+                  );
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.flag_outlined, color: AppTheme.error),
+                title: Text('메시지 신고',
+                    style:
+                        AppTheme.body(size: 14, color: AppTheme.error)),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  showReportDialog(
+                    context,
+                    targetType: ReportTargetType.message,
+                    targetId: message.id,
+                    targetLabel: '메시지',
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -499,21 +532,21 @@ class _VillageChatScreenState extends ConsumerState<VillageChatScreen> {
 
     if (hasImage && !hasText) {
       return GestureDetector(
-        onLongPress: !isMine ? () => _showMessageReport(message) : null,
+        onLongPress: () => _showMessageActions(message),
         child: _imageOnlyBubble(message.imageUrl!),
       );
     }
 
     if (hasText && !hasImage) {
       return GestureDetector(
-        onLongPress: !isMine ? () => _showMessageReport(message) : null,
+        onLongPress: () => _showMessageActions(message),
         child: _textBubble(message.content!, isMine),
       );
     }
 
     // 둘 다
     return GestureDetector(
-      onLongPress: !isMine ? () => _showMessageReport(message) : null,
+      onLongPress: () => _showMessageActions(message),
       child: Column(
         crossAxisAlignment:
             isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,

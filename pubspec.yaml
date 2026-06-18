@@ -1,7 +1,7 @@
 name: kyorang_village
 description: 교랑빌리지 - 관심사 기반 커뮤니티 플랫폼
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+5
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -41,6 +41,10 @@ dependencies:
   app_links: ^7.0.0
   firebase_messaging: ^15.2.10
   flutter_local_notifications: ^22.0.1
+  gal: ^2.3.2
+  share_plus: ^13.1.0
+  http: ^1.6.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -53,7 +57,9 @@ flutter:
 
   assets:
     - assets/images/
-
+    - assets/icons/         # 추가
+    - assets/icons/tabs/    # 폴더 나누면 추가
+    - assets/icons/villages/
 
 flutter_launcher_icons:
   android: true

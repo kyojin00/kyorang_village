@@ -128,6 +128,7 @@ class StorageBuckets {
   StorageBuckets._();
 
   static const String avatars = 'avatars';
+  static const String covers = 'covers'; // ← 추가
   static const String villages = 'villages';
   static const String posts = 'posts';
   static const String checkins = 'checkins';

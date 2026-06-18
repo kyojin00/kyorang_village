@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/unread_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../home/home_shell.dart';
 import '../models/village.dart';
@@ -14,6 +15,7 @@ class MyVillagesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final myVillages = ref.watch(myVillagesProvider);
+    final unread = ref.watch(unreadCountsProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.bgMain,
@@ -41,19 +43,31 @@ class MyVillagesTab extends ConsumerWidget {
                     return _EmptyView(
                       onExplore: () => ref
                           .read(homeTabIndexProvider.notifier)
-                          .set(1), // 탐색 탭으로
+                          .set(1),
                     );
                   }
                   return RefreshIndicator(
-                    onRefresh: () =>
-                        ref.read(myVillagesProvider.notifier).refresh(),
+                    onRefresh: () async {
+                      await ref
+                          .read(myVillagesProvider.notifier)
+                          .refresh();
+                      await ref
+                          .read(unreadCountsProvider.notifier)
+                          .refresh();
+                    },
                     color: AppTheme.primary,
                     child: ListView.separated(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                       itemCount: villages.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, i) =>
-                          _MyVillageCard(village: villages[i]),
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (context, i) {
+                        final v = villages[i];
+                        return _MyVillageCard(
+                          village: v,
+                          unreadCount: unread.villageFor(v.id),
+                        );
+                      },
                     ),
                   );
                 },
@@ -68,13 +82,18 @@ class MyVillagesTab extends ConsumerWidget {
 
 /// 내 마을 카드
 class _MyVillageCard extends ConsumerWidget {
-  const _MyVillageCard({required this.village});
+  const _MyVillageCard({
+    required this.village,
+    required this.unreadCount,
+  });
 
   final Village village;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cat = village.categoryInfo;
+    final hasUnread = unreadCount > 0;
 
     return Card(
       child: InkWell(
@@ -85,8 +104,8 @@ class _MyVillageCard extends ConsumerWidget {
               builder: (_) => VillageDetailScreen(village: village),
             ),
           );
-          // 상세에서 탈퇴/삭제했을 수 있으니 돌아오면 갱신
           ref.invalidate(myVillagesProvider);
+          ref.read(unreadCountsProvider.notifier).refresh();
         },
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -110,26 +129,53 @@ class _MyVillageCard extends ConsumerWidget {
                   children: [
                     Text(
                       village.name,
-                      style:
-                          AppTheme.body(size: 15, weight: FontWeight.w700),
+                      style: AppTheme.body(
+                          size: 15, weight: FontWeight.w700),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${cat.label} · ${village.memberCount}명이 함께해요',
-                      style:
-                          AppTheme.body(size: 12, color: AppTheme.textSub),
+                      style: AppTheme.body(
+                          size: 12, color: AppTheme.textSub),
                     ),
                   ],
                 ),
               ),
+              if (hasUnread) ...[
+                const SizedBox(width: 8),
+                _unreadBadge(unreadCount),
+              ],
               const Icon(
                 Icons.chevron_right_rounded,
                 color: AppTheme.textLight,
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _unreadBadge(int count) {
+    final label = count > 99 ? '99+' : '$count';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+      decoration: BoxDecoration(
+        color: AppTheme.error,
+        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          height: 1.2,
         ),
       ),
     );

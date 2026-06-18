@@ -5,7 +5,7 @@ import '../../../core/services/safety_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../models/post.dart';
 
-/// 게시판 데이터 서비스 (글/댓글/좋아요)
+/// 게시판 데이터 서비스 (글/댓글/반응)
 class BoardService {
   BoardService._();
   static final BoardService instance = BoardService._();
@@ -14,8 +14,6 @@ class BoardService {
 
   static const int pageSize = 20;
 
-  /// posts ↔ profiles 관계가 두 개(작성자 FK, post_likes 다대다)라서
-  /// 작성자 조인은 FK 이름을 명시해야 한다 (PGRST201 방지)
   static const String _postSelect =
       '*, profiles!posts_author_id_fkey(nickname, avatar_url)';
 
@@ -29,8 +27,7 @@ class BoardService {
   // 글 조회
   // ===========================================================
 
-  /// 마을 게시글 목록 (최신순, [before] 이전 글로 페이지네이션)
-  /// 각 글에 isLiked를 채워서 반환한다.
+  /// 마을 게시글 목록 (반응 정보 포함)
   Future<List<Post>> fetchPosts(
     String villageId, {
     DateTime? before,
@@ -50,7 +47,6 @@ class BoardService {
 
     if (rows.isEmpty) return [];
 
-    // 차단한 유저 글 제외
     final blockedIds = await SafetyService.instance.fetchBlockedIds();
     final visibleRows = blockedIds.isEmpty
         ? rows
@@ -60,21 +56,22 @@ class BoardService {
 
     if (visibleRows.isEmpty) return [];
 
-    // 내가 좋아요 누른 글 id 조회 (이번 페이지 글들만)
     final postIds = visibleRows.map((r) => r['id'] as String).toList();
-    final likedRows = await _supabase
-        .from('post_likes')
-        .select('post_id')
-        .eq('user_id', _uid)
-        .inFilter('post_id', postIds);
-    final likedIds = likedRows.map((r) => r['post_id'] as String).toSet();
 
-    return visibleRows
-        .map((r) => Post.fromJson(r, isLiked: likedIds.contains(r['id'])))
-        .toList();
+    final myReactionsByPost = await _fetchMyReactions(postIds);
+    final reactionsByPost = await _fetchPostsReactions(postIds);
+
+    return visibleRows.map((r) {
+      final id = r['id'] as String;
+      return Post.fromJson(
+        r,
+        myReaction: myReactionsByPost[id],
+        reactions: reactionsByPost[id] ?? const {},
+        isLiked: myReactionsByPost[id] != null,
+      );
+    }).toList();
   }
 
-  /// 글 단건 조회 (상세 화면 갱신용)
   Future<Post> fetchPost(String postId) async {
     final row = await _supabase
         .from('posts')
@@ -82,14 +79,59 @@ class BoardService {
         .eq('id', postId)
         .single();
 
-    final liked = await _supabase
-        .from('post_likes')
-        .select('post_id')
-        .eq('user_id', _uid)
-        .eq('post_id', postId)
-        .maybeSingle();
+    final myReactions = await _fetchMyReactions([postId]);
+    final reactions = await _fetchPostsReactions([postId]);
 
-    return Post.fromJson(row, isLiked: liked != null);
+    return Post.fromJson(
+      row,
+      myReaction: myReactions[postId],
+      reactions: reactions[postId] ?? const {},
+      isLiked: myReactions[postId] != null,
+    );
+  }
+
+  /// 내 반응 - postId → PostReaction 매핑
+  Future<Map<String, PostReaction>> _fetchMyReactions(
+      List<String> postIds) async {
+    if (postIds.isEmpty) return const {};
+    final result = await _supabase.rpc(
+      'get_my_reactions',
+      params: {'p_post_ids': postIds},
+    );
+    final out = <String, PostReaction>{};
+    if (result is List) {
+      for (final row in result) {
+        if (row is! Map) continue;
+        final pid = row['post_id'] as String?;
+        final code = row['reaction'] as String?;
+        if (pid == null || code == null) continue;
+        final reaction = PostReaction.fromCode(code);
+        if (reaction != null) out[pid] = reaction;
+      }
+    }
+    return out;
+  }
+
+  /// 게시글별 반응 카운트 - postId → {reaction code: count}
+  Future<Map<String, Map<String, int>>> _fetchPostsReactions(
+      List<String> postIds) async {
+    if (postIds.isEmpty) return const {};
+    final result = await _supabase.rpc(
+      'get_posts_reactions',
+      params: {'p_post_ids': postIds},
+    );
+    final out = <String, Map<String, int>>{};
+    if (result is List) {
+      for (final row in result) {
+        if (row is! Map) continue;
+        final pid = row['post_id'] as String?;
+        final code = row['reaction'] as String?;
+        final count = (row['count'] as num?)?.toInt();
+        if (pid == null || code == null || count == null) continue;
+        (out[pid] ??= <String, int>{})[code] = count;
+      }
+    }
+    return out;
   }
 
   // ===========================================================
@@ -116,7 +158,6 @@ class BoardService {
     return Post.fromJson(row);
   }
 
-  /// 글 삭제 (첨부 이미지도 스토리지에서 정리)
   Future<void> deletePost(Post post) async {
     await _supabase.from('posts').delete().eq('id', post.id);
     print('[BOARD] 글 삭제: ${post.id}');
@@ -174,27 +215,48 @@ class BoardService {
   }
 
   // ===========================================================
-  // 좋아요
+  // 반응
   // ===========================================================
 
-  /// 좋아요 토글. 토글 후 상태(true=좋아요 됨)를 반환한다.
-  /// 카운트는 DB 트리거가 유지하므로 클라이언트는 표시값만 증감한다.
-  Future<bool> toggleLike({
+  /// 반응 설정/변경/제거 통합 처리
+  /// - reaction이 null이면: 본인의 모든 반응 제거
+  /// - reaction이 있으면: 본인의 반응을 그것으로 설정 (이미 있으면 갱신)
+  ///
+  /// 한 user당 한 반응만 가능 (PK가 post_id+user_id)
+  Future<void> setReaction({
     required String postId,
-    required bool currentlyLiked,
+    required PostReaction? reaction,
   }) async {
-    if (currentlyLiked) {
+    if (reaction == null) {
       await _supabase
           .from('post_likes')
           .delete()
           .eq('post_id', postId)
           .eq('user_id', _uid);
-      return false;
-    } else {
-      await _supabase.from('post_likes').insert({
+      return;
+    }
+
+    // upsert — 없으면 insert, 있으면 reaction만 갱신
+    await _supabase.from('post_likes').upsert(
+      {
         'post_id': postId,
         'user_id': _uid,
-      });
+        'reaction': reaction.code,
+      },
+      onConflict: 'post_id,user_id',
+    );
+  }
+
+  /// 기존 코드 호환용 - heart 토글
+  Future<bool> toggleLike({
+    required String postId,
+    required bool currentlyLiked,
+  }) async {
+    if (currentlyLiked) {
+      await setReaction(postId: postId, reaction: null);
+      return false;
+    } else {
+      await setReaction(postId: postId, reaction: PostReaction.heart);
       return true;
     }
   }

@@ -13,7 +13,7 @@ import '../../features/friend/screens/dm_chat_screen.dart';
 import '../../features/home/home_shell.dart';
 import '../../features/village/models/village.dart';
 import '../../features/village/screens/village_chat_screen.dart';
-import '../../main.dart' show appNavigatorKey;
+import '../../main.dart' show appNavigatorKey, appProviderContainer;
 
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
@@ -324,11 +324,14 @@ class NotificationService {
 
   /// 채팅 탭으로 이동 (친구 요청 알림)
   Future<void> _routeToChatsTab(NavigatorState nav) async {
-    // 홈으로 일단 pop 후 탭 인덱스 변경
+    // 홈 위에 쌓인 화면들 다 닫고
     nav.popUntil((route) => route.isFirst);
-    // 채팅 탭(2)으로 전환은 ProviderScope 안에서 해야 함.
-    // 별도 진입점에서 처리하기 어려워서 일단 홈만 띄움.
-    // (실제 친구 요청 화면이 별도 라우트면 여기서 push 가능)
+    // 채팅 탭(2)으로 전환 — homeTabIndexProvider 변경
+    try {
+      appProviderContainer.read(homeTabIndexProvider.notifier).set(2);
+    } catch (e) {
+      print('[FCM] 탭 변경 실패: $e');
+    }
   }
 }
 

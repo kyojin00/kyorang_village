@@ -5,26 +5,88 @@ class VillageCategory {
     required this.code,
     required this.label,
     required this.emoji,
+    required this.iconPath,
   });
 
   final String code;
   final String label;
   final String emoji;
+  final String iconPath; // assets/icons/villages/<code>.png
 
   /// 전체 카테고리 목록 (탐색 칩, 마을 생성 선택지에 공통 사용)
   static const List<VillageCategory> all = [
-    VillageCategory(code: 'study', label: '공부', emoji: '📚'),
-    VillageCategory(code: 'exercise', label: '운동', emoji: '💪'),
-    VillageCategory(code: 'reading', label: '독서', emoji: '📖'),
-    VillageCategory(code: 'hobby', label: '취미', emoji: '🎨'),
-    VillageCategory(code: 'music', label: '음악', emoji: '🎵'),
-    VillageCategory(code: 'game', label: '게임', emoji: '🎮'),
-    VillageCategory(code: 'pet', label: '반려동물', emoji: '🐾'),
-    VillageCategory(code: 'food', label: '요리·맛집', emoji: '🍳'),
-    VillageCategory(code: 'travel', label: '여행', emoji: '✈️'),
-    VillageCategory(code: 'career', label: '커리어', emoji: '💼'),
-    VillageCategory(code: 'mind', label: '마음챙김', emoji: '🌿'),
-    VillageCategory(code: 'etc', label: '기타', emoji: '🏡'),
+    VillageCategory(
+      code: 'study',
+      label: '공부',
+      emoji: '📚',
+      iconPath: 'assets/icons/villages/study.png',
+    ),
+    VillageCategory(
+      code: 'exercise',
+      label: '운동',
+      emoji: '💪',
+      iconPath: 'assets/icons/villages/exercise.png',
+    ),
+    VillageCategory(
+      code: 'reading',
+      label: '독서',
+      emoji: '📖',
+      iconPath: 'assets/icons/villages/reading.png',
+    ),
+    VillageCategory(
+      code: 'hobby',
+      label: '취미',
+      emoji: '🎨',
+      iconPath: 'assets/icons/villages/hobby.png',
+    ),
+    VillageCategory(
+      code: 'music',
+      label: '음악',
+      emoji: '🎵',
+      iconPath: 'assets/icons/villages/music.png',
+    ),
+    VillageCategory(
+      code: 'game',
+      label: '게임',
+      emoji: '🎮',
+      iconPath: 'assets/icons/villages/game.png',
+    ),
+    VillageCategory(
+      code: 'pet',
+      label: '반려동물',
+      emoji: '🐾',
+      iconPath: 'assets/icons/villages/pet.png',
+    ),
+    VillageCategory(
+      code: 'food',
+      label: '요리·맛집',
+      emoji: '🍳',
+      iconPath: 'assets/icons/villages/food.png',
+    ),
+    VillageCategory(
+      code: 'travel',
+      label: '여행',
+      emoji: '✈️',
+      iconPath: 'assets/icons/villages/travel.png',
+    ),
+    VillageCategory(
+      code: 'career',
+      label: '커리어',
+      emoji: '💼',
+      iconPath: 'assets/icons/villages/career.png',
+    ),
+    VillageCategory(
+      code: 'mind',
+      label: '마음챙김',
+      emoji: '🌿',
+      iconPath: 'assets/icons/villages/mind.png',
+    ),
+    VillageCategory(
+      code: 'etc',
+      label: '기타',
+      emoji: '🏡',
+      iconPath: 'assets/icons/villages/etc.png',
+    ),
   ];
 
   static VillageCategory fromCode(String code) {

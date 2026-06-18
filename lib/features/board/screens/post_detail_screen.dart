@@ -5,13 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/safety_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/fullscreen_image_viewer.dart';
 import '../../../core/widgets/report_dialog.dart';
 import '../../friend/widgets/profile_sheet.dart';
 import '../models/post.dart';
 import '../services/board_service.dart';
 
-/// 글 상세 화면의 pop 결과
-/// 목록 화면이 받아서 항목을 갱신하거나 제거한다.
 class PostDetailResult {
   const PostDetailResult({required this.post, this.deleted = false});
 
@@ -19,7 +18,7 @@ class PostDetailResult {
   final bool deleted;
 }
 
-/// 글 상세 화면 (본문 + 이미지 + 좋아요 + 댓글)
+/// 글 상세 화면 (본문 + 이미지 + 반응 + 댓글)
 class PostDetailScreen extends ConsumerStatefulWidget {
   const PostDetailScreen({super.key, required this.post});
 
@@ -36,7 +35,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   List<Comment> _comments = [];
   bool _loadingComments = true;
   bool _sendingComment = false;
-  bool _togglingLike = false;
+  bool _settingReaction = false;
 
   String get _myId => AuthService.instance.currentUserId ?? '';
   bool get _isAuthor => _post.authorId == _myId;
@@ -46,6 +45,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     super.initState();
     _post = widget.post;
     _loadComments();
+    _refreshPost();
   }
 
   @override
@@ -78,42 +78,153 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     }
   }
 
+  /// 상세 진입 시 최신 반응 정보로 갱신
+  Future<void> _refreshPost() async {
+    try {
+      final fresh = await ref.read(boardServiceProvider).fetchPost(_post.id);
+      if (!mounted) return;
+      setState(() => _post = fresh);
+    } catch (e) {
+      print('[POST_DETAIL] 게시글 갱신 실패: $e');
+    }
+  }
+
   // ===========================================================
-  // 액션
+  // 반응 액션
   // ===========================================================
 
-  Future<void> _toggleLike() async {
-    if (_togglingLike) return;
-    _togglingLike = true;
+  /// 반응 변경. 같은 걸 다시 누르면 제거, 다른 걸 누르면 변경.
+  Future<void> _setReaction(PostReaction? newReaction) async {
+    if (_settingReaction) return;
+    final old = _post.myReaction;
+
+    final target = (old == newReaction) ? null : newReaction;
 
     // 낙관적 업데이트
-    final wasLiked = _post.isLiked;
+    final newReactions = Map<String, int>.from(_post.reactions);
+    if (old != null) {
+      final c = (newReactions[old.code] ?? 1) - 1;
+      if (c <= 0) {
+        newReactions.remove(old.code);
+      } else {
+        newReactions[old.code] = c;
+      }
+    }
+    if (target != null) {
+      newReactions[target.code] = (newReactions[target.code] ?? 0) + 1;
+    }
+
+    final wasLikedAny = old != null;
+    final nowLikedAny = target != null;
+    final likeCountDelta = (nowLikedAny ? 1 : 0) - (wasLikedAny ? 1 : 0);
+
     setState(() {
       _post = _post.copyWith(
-        isLiked: !wasLiked,
-        likeCount: _post.likeCount + (wasLiked ? -1 : 1),
+        myReaction: target,
+        clearMyReaction: target == null,
+        reactions: newReactions,
+        likeCount: _post.likeCount + likeCountDelta,
+        isLiked: nowLikedAny,
       );
+      _settingReaction = true;
     });
 
     try {
-      await ref.read(boardServiceProvider).toggleLike(
+      await ref.read(boardServiceProvider).setReaction(
             postId: _post.id,
-            currentlyLiked: wasLiked,
+            reaction: target,
           );
     } catch (e) {
-      print('[POST_DETAIL] 좋아요 실패: $e');
+      print('[POST_DETAIL] 반응 변경 실패: $e');
       if (!mounted) return;
-      // 롤백
-      setState(() {
-        _post = _post.copyWith(
-          isLiked: wasLiked,
-          likeCount: _post.likeCount + (wasLiked ? 1 : -1),
-        );
-      });
+      // 롤백 — 서버에서 최신 상태 다시 가져오기
+      _refreshPost();
     } finally {
-      _togglingLike = false;
+      if (mounted) setState(() => _settingReaction = false);
     }
   }
+
+  /// 이모지 픽커 시트 (반응 버튼 탭)
+  void _showReactionPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusL)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '반응 선택',
+                style: AppTheme.body(size: 14, color: AppTheme.textLight),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: PostReaction.values.map((r) {
+                  final selected = _post.myReaction == r;
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.of(sheetCtx).pop();
+                      _setReaction(r);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppTheme.primary.withOpacity(0.12)
+                            : AppTheme.bgSoft,
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusM),
+                        border: Border.all(
+                          color: selected
+                              ? AppTheme.primary
+                              : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(r.emoji,
+                              style: const TextStyle(fontSize: 28)),
+                          const SizedBox(height: 4),
+                          Text(
+                            r.label,
+                            style: AppTheme.body(
+                              size: 11,
+                              color: selected
+                                  ? AppTheme.primary
+                                  : AppTheme.textSub,
+                              weight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================
+  // 댓글 액션
+  // ===========================================================
 
   Future<void> _addComment() async {
     final text = _commentController.text.trim();
@@ -171,8 +282,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     try {
       await ref.read(boardServiceProvider).deletePost(_post);
       if (!mounted) return;
-      Navigator.of(context)
-          .pop(PostDetailResult(post: _post, deleted: true));
+      Navigator.of(context).pop(PostDetailResult(post: _post, deleted: true));
     } catch (e) {
       print('[POST_DETAIL] 글 삭제 실패: $e');
       if (!mounted) return;
@@ -270,7 +380,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   PopupMenuItem(
                     value: 'report',
                     child: Text('신고하기',
-                        style: AppTheme.body(size: 14, color: AppTheme.error)),
+                        style:
+                            AppTheme.body(size: 14, color: AppTheme.error)),
                   ),
                 ],
               ),
@@ -294,7 +405,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                       ..._post.imageUrls.map(_postImage),
                     ],
                     const SizedBox(height: 14),
-                    _reactionRow(),
+                    _reactionArea(),
                     const Divider(height: 32),
                     _commentSection(),
                   ],
@@ -318,39 +429,39 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
         avatarUrl: _post.authorAvatarUrl,
       ),
       child: Row(
-      children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: AppTheme.bgSoft,
-          backgroundImage: _post.authorAvatarUrl != null
-              ? CachedNetworkImageProvider(_post.authorAvatarUrl!)
-              : null,
-          child: _post.authorAvatarUrl == null
-              ? Text(
-                  _post.authorNickname.characters.first,
-                  style: AppTheme.body(
-                    size: 14,
-                    weight: FontWeight.w700,
-                    color: AppTheme.primary,
-                  ),
-                )
-              : null,
-        ),
-        const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _post.authorNickname,
-              style: AppTheme.body(size: 14, weight: FontWeight.w700),
-            ),
-            Text(
-              _post.relativeTime,
-              style: AppTheme.body(size: 11, color: AppTheme.textLight),
-            ),
-          ],
-        ),
-      ],
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: AppTheme.bgSoft,
+            backgroundImage: _post.authorAvatarUrl != null
+                ? CachedNetworkImageProvider(_post.authorAvatarUrl!)
+                : null,
+            child: _post.authorAvatarUrl == null
+                ? Text(
+                    _post.authorNickname.characters.first,
+                    style: AppTheme.body(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: AppTheme.primary,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _post.authorNickname,
+                style: AppTheme.body(size: 14, weight: FontWeight.w700),
+              ),
+              Text(
+                _post.relativeTime,
+                style: AppTheme.body(size: 11, color: AppTheme.textLight),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -358,25 +469,28 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   Widget _postImage(String url) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppTheme.radiusM),
-        child: CachedNetworkImage(
-          imageUrl: url,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          placeholder: (_, __) => Container(
-            height: 200,
-            color: AppTheme.bgSoft,
-            child: const Center(
-              child: CircularProgressIndicator(strokeWidth: 2.5),
+      child: GestureDetector(
+        onTap: () => FullscreenImageViewer.show(context, url),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.radiusM),
+          child: CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            placeholder: (_, __) => Container(
+              height: 200,
+              color: AppTheme.bgSoft,
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
             ),
-          ),
-          errorWidget: (_, __, ___) => Container(
-            height: 120,
-            color: AppTheme.bgSoft,
-            child: const Center(
-              child: Icon(Icons.broken_image_rounded,
-                  color: AppTheme.textLight),
+            errorWidget: (_, __, ___) => Container(
+              height: 120,
+              color: AppTheme.bgSoft,
+              child: const Center(
+                child: Icon(Icons.broken_image_rounded,
+                    color: AppTheme.textLight),
+              ),
             ),
           ),
         ),
@@ -384,44 +498,135 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     );
   }
 
-  Widget _reactionRow() {
-    return Row(
+  /// 반응 영역 - 카운트 칩 + 반응 버튼 + 댓글 카운트
+  Widget _reactionArea() {
+    final entries = _post.reactions.entries
+        .where((e) => e.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: _toggleLike,
-          child: Row(
-            children: [
-              Icon(
-                _post.isLiked
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_outline_rounded,
-                size: 20,
-                color:
-                    _post.isLiked ? AppTheme.error : AppTheme.textLight,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${_post.likeCount}',
-                style: AppTheme.body(
-                  size: 13,
-                  color: AppTheme.textSub,
-                  weight: FontWeight.w600,
+        // 반응 카운트 칩들
+        if (entries.isNotEmpty) ...[
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: entries.map((e) {
+              final reaction = PostReaction.fromCode(e.key);
+              if (reaction == null) return const SizedBox.shrink();
+              final mine = _post.myReaction == reaction;
+              return GestureDetector(
+                onTap: _settingReaction
+                    ? null
+                    : () => _setReaction(reaction),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: mine
+                        ? AppTheme.primary.withOpacity(0.12)
+                        : AppTheme.bgSoft,
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.radiusFull),
+                    border: Border.all(
+                      color: mine
+                          ? AppTheme.primary
+                          : AppTheme.divider,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(reaction.emoji,
+                          style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${e.value}',
+                        style: AppTheme.body(
+                          size: 12,
+                          color: mine
+                              ? AppTheme.primary
+                              : AppTheme.textSub,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // 반응 버튼 + 댓글 카운트
+        Row(
+          children: [
+            GestureDetector(
+              onTap: _settingReaction ? null : _showReactionPicker,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _post.myReaction != null
+                      ? AppTheme.primary.withOpacity(0.08)
+                      : AppTheme.bgSoft,
+                  borderRadius:
+                      BorderRadius.circular(AppTheme.radiusFull),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_post.myReaction != null) ...[
+                      Text(
+                        _post.myReaction!.emoji,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _post.myReaction!.label,
+                        style: AppTheme.body(
+                          size: 12,
+                          color: AppTheme.primary,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ] else ...[
+                      const Icon(
+                        Icons.add_reaction_outlined,
+                        size: 18,
+                        color: AppTheme.textSub,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '반응',
+                        style: AppTheme.body(
+                          size: 12,
+                          color: AppTheme.textSub,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        const Icon(Icons.chat_bubble_outline_rounded,
-            size: 18, color: AppTheme.textLight),
-        const SizedBox(width: 4),
-        Text(
-          '${_post.commentCount}',
-          style: AppTheme.body(
-            size: 13,
-            color: AppTheme.textSub,
-            weight: FontWeight.w600,
-          ),
+            ),
+            const SizedBox(width: 16),
+            const Icon(Icons.chat_bubble_outline_rounded,
+                size: 18, color: AppTheme.textLight),
+            const SizedBox(width: 4),
+            Text(
+              '${_post.commentCount}',
+              style: AppTheme.body(
+                size: 13,
+                color: AppTheme.textSub,
+                weight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -463,21 +668,21 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   avatarUrl: c.authorAvatarUrl,
                 ),
                 child: CircleAvatar(
-                radius: 14,
-                backgroundColor: AppTheme.bgSoft,
-                backgroundImage: c.authorAvatarUrl != null
-                    ? CachedNetworkImageProvider(c.authorAvatarUrl!)
-                    : null,
-                child: c.authorAvatarUrl == null
-                    ? Text(
-                        c.authorNickname.characters.first,
-                        style: AppTheme.body(
-                          size: 11,
-                          weight: FontWeight.w700,
-                          color: AppTheme.primary,
-                        ),
-                      )
-                    : null,
+                  radius: 14,
+                  backgroundColor: AppTheme.bgSoft,
+                  backgroundImage: c.authorAvatarUrl != null
+                      ? CachedNetworkImageProvider(c.authorAvatarUrl!)
+                      : null,
+                  child: c.authorAvatarUrl == null
+                      ? Text(
+                          c.authorNickname.characters.first,
+                          style: AppTheme.body(
+                            size: 11,
+                            weight: FontWeight.w700,
+                            color: AppTheme.primary,
+                          ),
+                        )
+                      : null,
                 ),
               ),
               const SizedBox(width: 10),

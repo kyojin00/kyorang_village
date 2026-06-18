@@ -23,10 +23,9 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
 
   List<Village> _villages = [];
   bool _loading = true;
-  String? _selectedCategory; // null = 전체
+  String? _selectedCategory;
   String _search = '';
 
-  /// 가입 요청 진행 중인 마을 id (버튼 중복 탭 방지)
   final Set<String> _joining = {};
 
   @override
@@ -67,11 +66,19 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
   }
 
   void _onSearchChanged(String value) {
+    setState(() {}); // suffix 아이콘 갱신용
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
       _search = value;
       _fetch();
     });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _search = '';
+    _debounce?.cancel();
+    _fetch();
   }
 
   void _onCategoryTap(String? code) {
@@ -113,7 +120,6 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
         builder: (_) => VillageDetailScreen(village: village),
       ),
     );
-    // 상세에서 가입/탈퇴했을 수 있으니 갱신
     _fetch();
   }
 
@@ -166,10 +172,18 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
                 controller: _searchController,
                 onChanged: _onSearchChanged,
                 style: AppTheme.body(size: 14),
-                decoration: const InputDecoration(
-                  hintText: '마을 이름으로 검색',
-                  prefixIcon:
-                      Icon(Icons.search_rounded, color: AppTheme.textLight),
+                decoration: InputDecoration(
+                  hintText: '마을 이름·소개·관심사로 검색',
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      color: AppTheme.textLight),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: _clearSearch,
+                          icon: const Icon(Icons.close_rounded,
+                              color: AppTheme.textLight, size: 18),
+                          tooltip: '지우기',
+                        ),
                 ),
               ),
             ),
@@ -249,7 +263,6 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 카테고리 이모지 배지
               Container(
                 width: 52,
                 height: 52,
@@ -261,30 +274,30 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
                 child: Text(cat.emoji, style: const TextStyle(fontSize: 26)),
               ),
               const SizedBox(width: 14),
-
-              // 마을 정보
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       village.name,
-                      style: AppTheme.body(size: 15, weight: FontWeight.w700),
+                      style:
+                          AppTheme.body(size: 15, weight: FontWeight.w700),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${cat.label} · ${village.memberCount}/${village.maxMembers}명',
-                      style: AppTheme.body(size: 12, color: AppTheme.textSub),
+                      style:
+                          AppTheme.body(size: 12, color: AppTheme.textSub),
                     ),
                     if (village.description != null &&
                         village.description!.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
                         village.description!,
-                        style:
-                            AppTheme.body(size: 13, color: AppTheme.textSub),
+                        style: AppTheme.body(
+                            size: 13, color: AppTheme.textSub),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -293,8 +306,6 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
                 ),
               ),
               const SizedBox(width: 10),
-
-              // 가입 버튼
               _joinButton(village),
             ],
           ),
@@ -380,7 +391,7 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
           Text(
             _search.isEmpty && _selectedCategory == null
                 ? '아직 마을이 없어요\n첫 번째 마을을 만들어 보세요!'
-                : '조건에 맞는 마을이 없어요',
+                : '조건에 맞는 마을이 없어요\n다른 키워드로 검색해 보세요',
             textAlign: TextAlign.center,
             style: AppTheme.body(
               size: 14,
