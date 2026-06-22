@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/village.dart';
 import '../services/village_service.dart';
+import '../widgets/category_icon.dart';
 import 'create_village_screen.dart';
 import 'village_detail_screen.dart';
 
@@ -199,8 +200,9 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
                   _categoryChip(label: '전체', code: null),
                   ...VillageCategory.all.map(
                     (c) => _categoryChip(
-                      label: '${c.emoji} ${c.label}',
+                      label: c.label,
                       code: c.code,
+                      category: c,
                     ),
                   ),
                 ],
@@ -234,12 +236,29 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
     );
   }
 
-  Widget _categoryChip({required String label, required String? code}) {
+  Widget _categoryChip({
+    required String label,
+    required String? code,
+    VillageCategory? category,
+  }) {
     final selected = _selectedCategory == code;
+
+    // '전체' 칩은 아이콘 없이 텍스트만, 그 외에는 PNG 아이콘 + 라벨
+    final Widget labelWidget = category == null
+        ? Text(label)
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CategoryIcon(category: category, size: 22),
+              const SizedBox(width: 5),
+              Text(label),
+            ],
+          );
+
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
-        label: Text(label),
+        label: labelWidget,
         selected: selected,
         onSelected: (_) => _onCategoryTap(code),
         labelStyle: AppTheme.body(
@@ -271,7 +290,7 @@ class _ExploreTabState extends ConsumerState<ExploreTab> {
                   borderRadius: BorderRadius.circular(AppTheme.radiusM),
                 ),
                 alignment: Alignment.center,
-                child: Text(cat.emoji, style: const TextStyle(fontSize: 26)),
+                child: CategoryIcon(category: cat, size: 38),
               ),
               const SizedBox(width: 14),
               Expanded(

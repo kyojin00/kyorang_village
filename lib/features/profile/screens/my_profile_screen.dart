@@ -8,6 +8,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/fullscreen_image_viewer.dart';
 import '../../village/models/village.dart';
+import '../../village/widgets/category_icon.dart';
 import 'interests_edit_sheet.dart';
 
 class MyProfileScreen extends ConsumerStatefulWidget {
@@ -806,10 +807,17 @@ class _MyProfileScreenState extends ConsumerState<MyProfileScreen> {
                   border:
                       Border.all(color: AppTheme.divider, width: 1),
                 ),
-                child: Text(
-                  '${cat.emoji} ${cat.label}',
-                  style: AppTheme.body(
-                      size: 13, weight: FontWeight.w600),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CategoryIcon(category: cat, size: 22),
+                    const SizedBox(width: 6),
+                    Text(
+                      cat.label,
+                      style: AppTheme.body(
+                          size: 13, weight: FontWeight.w600),
+                    ),
+                  ],
                 ),
               );
             }).toList(),

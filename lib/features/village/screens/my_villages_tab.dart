@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../home/home_shell.dart';
 import '../models/village.dart';
 import '../services/village_service.dart';
+import '../widgets/category_icon.dart';
 import 'village_detail_screen.dart';
 
 /// 내 마을 탭 - 가입한 마을 목록
@@ -119,8 +120,7 @@ class _MyVillageCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(AppTheme.radiusM),
                 ),
                 alignment: Alignment.center,
-                child:
-                    Text(cat.emoji, style: const TextStyle(fontSize: 26)),
+                child: CategoryIcon(category: cat, size: 38),
               ),
               const SizedBox(width: 14),
               Expanded(

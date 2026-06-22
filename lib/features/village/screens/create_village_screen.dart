@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/village.dart';
 import '../services/village_service.dart';
+import '../widgets/category_icon.dart';
 
 /// 마을 만들기 화면
 /// 생성 성공 시 생성된 Village를 pop 결과로 반환한다.
@@ -106,7 +107,14 @@ class _CreateVillageScreenState extends ConsumerState<CreateVillageScreen> {
                 children: VillageCategory.all.map((c) {
                   final selected = _selectedCategory == c.code;
                   return ChoiceChip(
-                    label: Text('${c.emoji} ${c.label}'),
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CategoryIcon(category: c, size: 22),
+                        const SizedBox(width: 5),
+                        Text(c.label),
+                      ],
+                    ),
                     selected: selected,
                     onSelected: (_) =>
                         setState(() => _selectedCategory = c.code),

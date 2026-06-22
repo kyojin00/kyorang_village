@@ -7,6 +7,7 @@ import '../../board/screens/board_screen.dart';
 import '../../challenge/screens/challenge_list_screen.dart';
 import '../models/village.dart';
 import '../services/village_service.dart';
+import '../widgets/category_icon.dart';
 import 'village_chat_screen.dart';
 import 'village_members_sheet.dart';
 
@@ -239,8 +240,7 @@ class _VillageDetailScreenState extends ConsumerState<VillageDetailScreen> {
                                   BorderRadius.circular(AppTheme.radiusM),
                             ),
                             alignment: Alignment.center,
-                            child: Text(cat.emoji,
-                                style: const TextStyle(fontSize: 28)),
+                            child: CategoryIcon(category: cat, size: 40),
                           ),
                           const SizedBox(width: 14),
                           Expanded(

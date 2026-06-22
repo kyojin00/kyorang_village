@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../village/models/village.dart';
+import '../../village/widgets/category_icon.dart';
 
 /// 관심사 편집 시트
 /// VillageCategory를 그대로 재활용 — 마을 카테고리와 같은 관심사 체계
@@ -156,7 +157,14 @@ class _InterestsEditSheetState extends State<InterestsEditSheet> {
     final selected = _selected.contains(cat.code);
     final atLimit = !selected && _selected.length >= _maxSelectable;
     return FilterChip(
-      label: Text('${cat.emoji} ${cat.label}'),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CategoryIcon(category: cat, size: 22),
+          const SizedBox(width: 5),
+          Text(cat.label),
+        ],
+      ),
       selected: selected,
       onSelected: atLimit ? null : (_) => _toggle(cat.code),
       labelStyle: AppTheme.body(

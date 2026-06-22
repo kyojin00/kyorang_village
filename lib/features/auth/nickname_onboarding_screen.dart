@@ -6,7 +6,7 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../home/home_shell.dart';
-import '../onboarding/onboarding_screen.dart';
+import '../onboarding/sonboarding_screen.dart';
 
 /// 신규 가입자 닉네임 온보딩 화면
 class NicknameOnboardingScreen extends ConsumerStatefulWidget {

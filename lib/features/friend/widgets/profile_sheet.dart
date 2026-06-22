@@ -8,6 +8,7 @@ import '../../../core/services/safety_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../profile/screens/interests_edit_sheet.dart';
 import '../../village/models/village.dart';
+import '../../village/widgets/category_icon.dart';
 import '../models/friend.dart';
 import '../screens/dm_chat_screen.dart';
 import '../services/dm_service.dart';
@@ -218,6 +219,7 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
       initial: _interests,
     );
     if (result == null || !mounted) return;
+    print('[INTERESTS_DEBUG] 저장 결과: $result'); // 이 줄 추가
     setState(() => _interests = result);
     _snack('관심사를 저장했어요.');
   }
@@ -547,10 +549,17 @@ class _ProfileSheetBodyState extends ConsumerState<_ProfileSheetBody> {
                   border:
                       Border.all(color: AppTheme.divider, width: 1),
                 ),
-                child: Text(
-                  '${cat.emoji} ${cat.label}',
-                  style: AppTheme.body(
-                      size: 12, weight: FontWeight.w600),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CategoryIcon(category: cat, size: 16),
+                    const SizedBox(width: 5),
+                    Text(
+                      cat.label,
+                      style: AppTheme.body(
+                          size: 12, weight: FontWeight.w600),
+                    ),
+                  ],
                 ),
               );
             }).toList(),
